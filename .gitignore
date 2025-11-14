@@ -12,6 +12,7 @@ dist/
 .env*
 !/.env.example
 !/.env.template
+!/.env.production.example
 
 # --- IDE & Editor Config ---
 .vscode/
