@@ -1,0 +1,111 @@
+# ===================================================================
+# == DOCKER COMPOSE CHO MÔI TRƯỜNG PRODUCTION (VPS)                ==
+# == File này sử dụng .env.production, Nginx và Certbot tự động     ==
+# ===================================================================
+
+services:
+  # --- Dịch vụ Backend (FastAPI) ---
+  backend:
+    build:
+      context: ./fnb-smart-menu-backend
+      dockerfile: Dockerfile
+    container_name: fnb_backend_prod
+    volumes:
+      - ./fnb-smart-menu-backend/uploads:/app/uploads
+    env_file:
+      - .env.production
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - fnb-net
+
+  # --- Dịch vụ Database (PostgreSQL) ---
+  db:
+    image: postgres:14-alpine
+    container_name: fnb_postgres_db_prod
+    env_file:
+      - .env.production
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    networks:
+      - fnb-net
+
+  # --- Dịch vụ Frontend Khách hàng (Next.js) ---
+  frontend:
+    build:
+      context: ./fnb-smart-menu-frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: fnb_frontend_prod
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - fnb-net
+
+  # --- Dịch vụ Frontend Admin (Next.js) ---
+  admin:
+    build:
+      context: ./fnb-smart-menu-admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    container_name: fnb_admin_prod
+    restart: always
+    depends_on:
+      - backend
+    networks:
+      - fnb-net
+
+  # --- DỊCH VỤ REVERSE PROXY (NGINX) ---
+  nginx:
+    image: nginx:alpine
+    container_name: fnb_nginx_proxy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # Mount file cấu hình Nginx (đã được generate bởi deploy.sh)
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      # Mount thư mục chứa certs của Let's Encrypt
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Mount thư mục xác thực của Certbot
+      - ./certbot/www:/var/www/certbot:ro
+    depends_on:
+      - backend
+      - admin
+      - frontend
+    restart: always
+    networks:
+      - fnb-net
+
+  # --- DỊCH VỤ TỰ ĐỘNG SSL (CERTBOT) ---
+  certbot:
+    image: certbot/certbot
+    container_name: fnb_certbot
+    volumes:
+      # Mount thư mục chứa certs
+      - /etc/letsencrypt:/etc/letsencrypt
+      # Mount thư mục xác thực
+      - ./certbot/www:/var/www/certbot
+    # Chạy vòng lặp kiểm tra gia hạn mỗi 12 giờ
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+    networks:
+      - fnb-net
+
+# --- Định nghĩa Volumes & Networks ---
+volumes:
+  postgres_data_prod:
+
+networks:
+  fnb-net:
+    driver: bridge

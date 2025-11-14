@@ -1,0 +1,90 @@
+# /etc/nginx/nginx.conf.template
+# Đây là file TEMPLATE, script deploy.sh sẽ dùng nó để tạo ra file nginx.conf
+
+worker_processes auto;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    sendfile        on;
+    keepalive_timeout  65;
+
+    proxy_buffers 8 16k;
+    proxy_buffer_size 32k;
+    client_max_body_size 50M;
+
+    # Định nghĩa các upstream services
+    upstream backend_service {
+        server backend:8000;
+    }
+    upstream admin_service {
+        server admin:3000;
+    }
+    upstream frontend_service {
+        server frontend:3000;
+    }
+
+    # Server block cho cổng 80: Dùng để xác thực Certbot và redirect sang HTTPS
+    server {
+        listen 80;
+        # Lắng nghe trên tất cả các domain đã định nghĩa
+        server_name ${DOMAIN_API} ${DOMAIN_ADMIN} ${DOMAIN_FRONTEND};
+        
+        # Phục vụ file xác thực của Let's Encrypt
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        # Redirect tất cả truy cập khác sang HTTPS
+        location / {
+            return 301 https://$host$request_uri;
+        }
+    }
+
+    # Server block chính cho HTTPS
+    server {
+        listen 443 ssl http2;
+        server_name ${DOMAIN_API} ${DOMAIN_ADMIN} ${DOMAIN_FRONTEND};
+
+        # --- Cấu hình SSL ---
+        # Certbot sẽ tự động tạo các file này
+        # Chúng ta dùng $DOMAIN_FRONTEND làm tên miền chính cho cert
+        ssl_certificate /etc/letsencrypt/live/${DOMAIN_FRONTEND}/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_FRONTEND}/privkey.pem;
+        include /etc/letsencrypt/options-ssl-nginx.conf;
+        ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+        # --- Cấu hình Reverse Proxy ---
+        location / {
+            # Điều hướng dựa trên tên miền ($host)
+            if ($host = ${DOMAIN_API}) {
+                proxy_pass http://backend_service;
+            }
+            if ($host = ${DOMAIN_ADMIN}) {
+                proxy_pass http://admin_service;
+            }
+            if ($host = ${DOMAIN_FRONTEND}) {
+                proxy_pass http://frontend_service;
+            }
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+
+        # Location cho WebSocket
+        location /ws/ {
+            proxy_pass http://backend_service;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "Upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+}
