@@ -1,0 +1,32 @@
+# Tệp: fnb-smart-menu-frontend/.gitignore
+# Đã được tối ưu hóa - chỉ giữ lại các quy tắc cần thiết cho Next.js
+
+# Dependencies
+/node_modules
+
+# Next.js build output
+/.next/
+/out/
+
+# Build artifacts from other tools
+/build
+/dist
+
+# Test results
+/coverage
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Next.js environment declaration
+next-env.d.ts
+
+# Local environment variables
+# These should never be committed. Use .env.example for templates.
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Vercel deployment files
+.vercel
