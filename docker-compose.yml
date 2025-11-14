@@ -1,7 +1,6 @@
 # Tệp: projects/fnb-smart-menu/docker-compose.yml
 # MỤC ĐÍCH: Dàn dựng cả 3 services (backend, frontend, admin) VÀ
 #          cơ sở dữ liệu PostgreSQL production.
-version: "3.8"
 
 services:
   # --- Dịch vụ Backend (Đã CẬP NHẬT cho Postgres) ---
@@ -17,6 +16,7 @@ services:
       - ./fnb-smart-menu-backend/uploads:/app/uploads
     environment:
       # === CUNG CẤP BIẾN MÔI TRƯỜNG CHO POSTGRES (mà models.py đang đọc) ===
+      - SECRET_KEY=08dd74d3cb23bf8190d00fcac56c292a9a48c81bda6545c580b6391b942dbf0a
       - POSTGRES_USER=myadmin
       - POSTGRES_PASSWORD=mypassword123 # Bạn có thể đổi mật khẩu này
       - POSTGRES_DB=fnb_smart_menu_db
