@@ -46,7 +46,6 @@ pnpm-debug.log*
 docker-compose.production.yml.backup
 .env.production.backup
 deploy.sh.backup
-nginx.conf.backup
 
 # Local test scripts
 kiem-tra-nhanh.sh
