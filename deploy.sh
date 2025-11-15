@@ -3,6 +3,7 @@
 # ===================================================================
 # == SCRIPT DEPLOY FNB SMART MENU - PRODUCTION                    ==
 # == Hỗ trợ Docker, Nginx, SSL                                    ==
+# == PHIÊN BẢN NÀY DÙNG DOCKER COMPOSE V2 (docker compose)         ==
 # ===================================================================
 
 # Màu sắc
@@ -57,11 +58,13 @@ if ! command -v docker &> /dev/null; then
 fi
 echo -e "${GREEN}✅ Docker đã cài đặt${NC}"
 
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}❌ Docker Compose chưa được cài đặt!${NC}"
+# === THAY ĐỔI: Kiểm tra 'docker compose' (V2) thay vì 'docker-compose' (V1) ===
+if ! docker compose version &> /dev/null; then
+    echo -e "${RED}❌ Docker Compose (V2) chưa được cài đặt!${NC}"
+    echo "Vui lòng chạy: sudo apt-get install docker-compose-plugin"
     exit 1
 fi
-echo -e "${GREEN}✅ Docker Compose đã cài đặt${NC}"
+echo -e "${GREEN}✅ Docker Compose (V2) đã cài đặt${NC}"
 
 # ===================================================================
 # BƯỚC 3: KIỂM TRA SSL (TÙY CHỌN)
@@ -110,7 +113,9 @@ fi
 # ===================================================================
 echo ""
 echo "🛑 Bước 5: Dừng containers cũ..."
-docker-compose -f docker-compose.production.yml down
+
+# === THAY ĐỔI: Dùng 'docker compose' ===
+docker compose -f docker-compose.production.yml down
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Đã dừng containers${NC}"
@@ -125,7 +130,8 @@ echo ""
 echo "🔨 Bước 6: Build Docker images..."
 echo -e "${YELLOW}⏳ Quá trình này có thể mất 5-10 phút...${NC}"
 
-docker-compose -f docker-compose.production.yml build --no-cache
+# === THAY ĐỔI: Dùng 'docker compose' ===
+docker compose -f docker-compose.production.yml build --no-cache
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Build thành công${NC}"
@@ -140,7 +146,8 @@ fi
 echo ""
 echo "▶️  Bước 7: Khởi động containers..."
 
-docker-compose -f docker-compose.production.yml up -d
+# === THAY ĐỔI: Dùng 'docker compose' ===
+docker compose -f docker-compose.production.yml up -d
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Containers đã khởi động${NC}"
@@ -236,7 +243,8 @@ if [ "$ALL_OK" = true ]; then
     echo -e "${GREEN}🎉 DEPLOY THÀNH CÔNG!${NC}"
 else
     echo -e "${YELLOW}⚠️  DEPLOY HOÀN TẤT NHƯNG CÓ LỖI${NC}"
-    echo "Kiểm tra logs: docker-compose -f docker-compose.production.yml logs -f"
+    # === THAY ĐỔI: Dùng 'docker compose' ===
+    echo "Kiểm tra logs: docker compose -f docker-compose.production.yml logs -f"
 fi
 echo "========================================="
 
@@ -256,10 +264,11 @@ fi
 
 echo ""
 echo "📊 LỆNH HỮU ÍCH:"
-echo "   Xem logs:        docker-compose -f docker-compose.production.yml logs -f"
+# === THAY ĐỔI: Cập nhật các lệnh hữu ích sang V2 ===
+echo "   Xem logs:        docker compose -f docker-compose.production.yml logs -f"
 echo "   Xem logs backend: docker logs fnb_backend_prod -f"
-echo "   Dừng services:   docker-compose -f docker-compose.production.yml down"
-echo "   Khởi động lại:   docker-compose -f docker-compose.production.yml restart"
+echo "   Dừng services:   docker compose -f docker-compose.production.yml down"
+echo "   Khởi động lại:   docker compose -f docker-compose.production.yml restart"
 echo "   Kiểm tra status: docker ps"
 echo "   Setup SSL:       bash setup-ssl.sh"
 

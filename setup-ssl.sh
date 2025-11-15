@@ -1,269 +1,225 @@
 #!/bin/bash
 
 # ===================================================================
-# == SCRIPT DEPLOY FNB SMART MENU - PRODUCTION                    ==
-# == Hỗ trợ Docker, Nginx, SSL                                    ==
+# == SCRIPT SETUP SSL VỚI LET'S ENCRYPT - LẦN ĐẦU TIÊN          ==
+# == Sử dụng Certbot để lấy SSL certificates cho tất cả domains   ==
 # ===================================================================
 
 # Màu sắc
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "========================================="
-echo "🚀 FNB SMART MENU - DEPLOY TO PRODUCTION"
+echo "🔒 SETUP SSL CHO FNB SMART MENU"
 echo "========================================="
 
 # ===================================================================
-# BƯỚC 1: KIỂM TRA FILE CẤU HÌNH
+# BƯỚC 1: CẤU HÌNH DOMAIN
 # ===================================================================
 echo ""
-echo "📋 Bước 1: Kiểm tra file cấu hình..."
+echo "📝 Bước 1: Cấu hình domain"
+echo ""
+echo "Nhập các domain của anh (cách nhau bằng dấu cách):"
+echo "Ví dụ: admin.fnbsmartmenu.com api.fnbsmartmenu.com menu.fnbsmartmenu.com"
+echo ""
+read -p "Domain: " DOMAINS
 
-# Kiểm tra .env.production
-if [ ! -f ".env.production" ]; then
-    echo -e "${RED}❌ Không tìm thấy .env.production${NC}"
-    echo "Vui lòng tạo file .env.production trước!"
+if [ -z "$DOMAINS" ]; then
+    echo -e "${RED}❌ Anh chưa nhập domain!${NC}"
     exit 1
 fi
-echo -e "${GREEN}✅ File .env.production tồn tại${NC}"
 
-# Kiểm tra docker-compose.production.yml
-if [ ! -f "docker-compose.production.yml" ]; then
-    echo -e "${RED}❌ Không tìm thấy docker-compose.production.yml${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✅ File docker-compose.production.yml tồn tại${NC}"
+# Chuyển domains thành array
+read -ra DOMAIN_ARRAY <<< "$DOMAINS"
 
-# Kiểm tra nginx.conf
-if [ ! -f "nginx.conf" ]; then
-    echo -e "${RED}❌ Không tìm thấy nginx.conf${NC}"
-    echo "Vui lòng tạo file nginx.conf trước!"
-    exit 1
-fi
-echo -e "${GREEN}✅ File nginx.conf tồn tại${NC}"
+echo -e "${GREEN}✅ Sẽ setup SSL cho: $DOMAINS${NC}"
 
 # ===================================================================
-# BƯỚC 2: KIỂM TRA DOCKER
+# BƯỚC 2: NHẬP EMAIL
 # ===================================================================
 echo ""
-echo "🐳 Bước 2: Kiểm tra Docker..."
+read -p "Nhập email của anh (để nhận thông báo từ Let's Encrypt): " EMAIL
 
-if ! command -v docker &> /dev/null; then
-    echo -e "${RED}❌ Docker chưa được cài đặt!${NC}"
+if [ -z "$EMAIL" ]; then
+    echo -e "${RED}❌ Anh chưa nhập email!${NC}"
     exit 1
 fi
-echo -e "${GREEN}✅ Docker đã cài đặt${NC}"
-
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}❌ Docker Compose chưa được cài đặt!${NC}"
-    exit 1
-fi
-echo -e "${GREEN}✅ Docker Compose đã cài đặt${NC}"
 
 # ===================================================================
-# BƯỚC 3: KIỂM TRA SSL (TÙY CHỌN)
+# BƯỚC 3: TẠO THƯ MỤC CERTBOT
 # ===================================================================
 echo ""
-echo "🔒 Bước 3: Kiểm tra SSL..."
-
-SSL_EXISTS=false
-
-# Đọc domain từ .env.production
-if grep -q "api.fnbsmartmenu.com" .env.production; then
-    if [ -d "/etc/letsencrypt/live/api.fnbsmartmenu.com" ]; then
-        echo -e "${GREEN}✅ SSL certificate đã tồn tại${NC}"
-        SSL_EXISTS=true
-    else
-        echo -e "${YELLOW}⚠️  Chưa có SSL certificate${NC}"
-        echo "Sau khi deploy, chạy: bash setup-ssl.sh"
-    fi
-fi
+echo "📁 Bước 2: Tạo thư mục certbot..."
+mkdir -p ./certbot/www
+echo -e "${GREEN}✅ Đã tạo thư mục certbot${NC}"
 
 # ===================================================================
-# BƯỚC 4: BACKUP DATABASE
+# BƯỚC 4: TẠO FILE NGINX TẠM THỜI (KHÔNG SSL)
 # ===================================================================
 echo ""
-echo "💾 Bước 4: Backup database..."
+echo "📝 Bước 3: Tạo file nginx.conf tạm thời (HTTP only)..."
 
-BACKUP_DIR="./backups"
-mkdir -p $BACKUP_DIR
-BACKUP_FILE="$BACKUP_DIR/db_backup_$(date +%Y%m%d_%H%M%S).sql"
+cat > nginx.conf.temp << 'EOF'
+events {
+    worker_connections 1024;
+}
 
-if docker ps | grep -q fnb_postgres_db_prod; then
-    echo "Đang backup database..."
-    docker exec fnb_postgres_db_prod pg_dump -U myadmin fnb_smart_menu_db > $BACKUP_FILE 2>/dev/null
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
     
-    if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✅ Backup thành công: $BACKUP_FILE${NC}"
-    else
-        echo -e "${YELLOW}⚠️  Không thể backup (database có thể chưa chạy)${NC}"
-    fi
-else
-    echo -e "${YELLOW}⚠️  Database chưa chạy, bỏ qua backup${NC}"
-fi
+EOF
+
+# Tạo server block cho mỗi domain
+for domain in "${DOMAIN_ARRAY[@]}"; do
+    cat >> nginx.conf.temp << EOF
+    server {
+        listen 80;
+        server_name $domain;
+
+        location /.well-known/acme-challenge/ {
+            root /var/www/certbot;
+        }
+
+        location / {
+            return 200 'OK';
+            add_header Content-Type text/plain;
+        }
+    }
+
+EOF
+done
+
+echo "}" >> nginx.conf.temp
+
+echo -e "${GREEN}✅ Đã tạo nginx.conf tạm thời${NC}"
 
 # ===================================================================
-# BƯỚC 5: DỪNG CONTAINERS CŨ
+# BƯỚC 5: BACKUP NGINX.CONF CŨ (NẾU CÓ)
+# ===================================================================
+if [ -f "nginx.conf" ]; then
+    echo ""
+    echo "💾 Backup nginx.conf cũ..."
+    cp nginx.conf nginx.conf.backup
+    echo -e "${GREEN}✅ Đã backup nginx.conf${NC}"
+fi
+
+# Sử dụng file tạm thời
+cp nginx.conf.temp nginx.conf
+
+# ===================================================================
+# BƯỚC 6: KHỞI ĐỘNG NGINX (HTTP ONLY)
 # ===================================================================
 echo ""
-echo "🛑 Bước 5: Dừng containers cũ..."
-docker-compose -f docker-compose.production.yml down
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Đã dừng containers${NC}"
-else
-    echo -e "${YELLOW}⚠️  Không có containers nào đang chạy${NC}"
-fi
-
-# ===================================================================
-# BƯỚC 6: BUILD IMAGES MỚI
-# ===================================================================
-echo ""
-echo "🔨 Bước 6: Build Docker images..."
-echo -e "${YELLOW}⏳ Quá trình này có thể mất 5-10 phút...${NC}"
-
-docker-compose -f docker-compose.production.yml build --no-cache
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Build thành công${NC}"
-else
-    echo -e "${RED}❌ Build thất bại!${NC}"
-    exit 1
-fi
-
-# ===================================================================
-# BƯỚC 7: KHỞI ĐỘNG CONTAINERS
-# ===================================================================
-echo ""
-echo "▶️  Bước 7: Khởi động containers..."
-
-docker-compose -f docker-compose.production.yml up -d
-
-if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Containers đã khởi động${NC}"
-else
-    echo -e "${RED}❌ Không thể khởi động containers!${NC}"
-    exit 1
-fi
-
-# ===================================================================
-# BƯỚC 8: ĐỢI SERVICES KHỞI ĐỘNG
-# ===================================================================
-echo ""
-echo "⏳ Bước 8: Đợi services khởi động..."
-sleep 15
-
-# ===================================================================
-# BƯỚC 9: KIỂM TRA HEALTH
-# ===================================================================
-echo ""
-echo "🏥 Bước 9: Kiểm tra health của services..."
-
-ALL_OK=true
-
-# Kiểm tra Database
-if docker ps | grep -q fnb_postgres_db_prod; then
-    echo -e "${GREEN}✅ Database đang chạy${NC}"
-else
-    echo -e "${RED}❌ Database không chạy!${NC}"
-    ALL_OK=false
-fi
-
-# Kiểm tra Backend
-if docker ps | grep -q fnb_backend_prod; then
-    echo -e "${GREEN}✅ Backend đang chạy${NC}"
-else
-    echo -e "${RED}❌ Backend không chạy!${NC}"
-    ALL_OK=false
-fi
-
-# Kiểm tra Admin Frontend
-if docker ps | grep -q fnb_admin_prod; then
-    echo -e "${GREEN}✅ Admin Frontend đang chạy${NC}"
-else
-    echo -e "${RED}❌ Admin Frontend không chạy!${NC}"
-    ALL_OK=false
-fi
-
-# Kiểm tra Customer Frontend
-if docker ps | grep -q fnb_frontend_prod; then
-    echo -e "${GREEN}✅ Customer Frontend đang chạy${NC}"
-else
-    echo -e "${YELLOW}⚠️  Customer Frontend không chạy (có thể chưa cần)${NC}"
-fi
+echo "🚀 Bước 4: Khởi động Nginx (HTTP only)..."
+docker-compose -f docker-compose.production.yml up -d nginx
+sleep 5
 
 # Kiểm tra Nginx
-if docker ps | grep -q fnb_nginx_proxy; then
-    echo -e "${GREEN}✅ Nginx đang chạy${NC}"
-else
-    echo -e "${RED}❌ Nginx không chạy!${NC}"
-    ALL_OK=false
+if ! docker ps | grep -q fnb_nginx_proxy; then
+    echo -e "${RED}❌ Nginx không khởi động được!${NC}"
+    exit 1
 fi
 
-# Kiểm tra Certbot
-if docker ps | grep -q fnb_certbot; then
-    echo -e "${GREEN}✅ Certbot đang chạy${NC}"
+echo -e "${GREEN}✅ Nginx đã khởi động${NC}"
+
+# ===================================================================
+# BƯỚC 7: LẤY SSL CERTIFICATE
+# ===================================================================
+echo ""
+echo "🔒 Bước 5: Lấy SSL certificate từ Let's Encrypt..."
+echo ""
+echo -e "${YELLOW}⏳ Quá trình này có thể mất 1-2 phút...${NC}"
+
+# Build certbot command
+CERTBOT_CMD="docker run --rm \
+  -v /etc/letsencrypt:/etc/letsencrypt \
+  -v $(pwd)/certbot/www:/var/www/certbot \
+  certbot/certbot certonly \
+  --webroot \
+  --webroot-path=/var/www/certbot \
+  --email $EMAIL \
+  --agree-tos \
+  --no-eff-email"
+
+# Thêm tất cả domains
+for domain in "${DOMAIN_ARRAY[@]}"; do
+    CERTBOT_CMD="$CERTBOT_CMD -d $domain"
+done
+
+# Chạy certbot
+eval $CERTBOT_CMD
+
+if [ $? -eq 0 ]; then
+    echo -e "${GREEN}✅ Đã lấy SSL certificate thành công!${NC}"
 else
-    echo -e "${YELLOW}⚠️  Certbot không chạy (có thể do chưa setup SSL)${NC}"
-fi
-
-# ===================================================================
-# BƯỚC 10: HIỂN THỊ LOGS
-# ===================================================================
-echo ""
-echo "========================================="
-echo "📋 LOGS (nhấn Ctrl+C để thoát)"
-echo "========================================="
-
-# Hiển thị logs của backend để kiểm tra
-echo ""
-echo -e "${BLUE}--- Backend Logs (5 dòng cuối) ---${NC}"
-docker logs fnb_backend_prod --tail 5
-
-echo ""
-echo -e "${BLUE}--- Nginx Logs (5 dòng cuối) ---${NC}"
-docker logs fnb_nginx_proxy --tail 5
-
-# ===================================================================
-# HOÀN TẤT
-# ===================================================================
-echo ""
-echo "========================================="
-if [ "$ALL_OK" = true ]; then
-    echo -e "${GREEN}🎉 DEPLOY THÀNH CÔNG!${NC}"
-else
-    echo -e "${YELLOW}⚠️  DEPLOY HOÀN TẤT NHƯNG CÓ LỖI${NC}"
-    echo "Kiểm tra logs: docker-compose -f docker-compose.production.yml logs -f"
-fi
-echo "========================================="
-
-echo ""
-echo "📝 THÔNG TIN TRUY CẬP:"
-if [ "$SSL_EXISTS" = true ]; then
-    echo "   Admin:   https://admin.fnbsmartmenu.com"
-    echo "   API:     https://api.fnbsmartmenu.com/docs"
-    echo "   Menu:    https://menu.fnbsmartmenu.com"
-else
-    echo "   Admin:   http://admin.fnbsmartmenu.com"
-    echo "   API:     http://api.fnbsmartmenu.com/docs"
-    echo "   Menu:    http://menu.fnbsmartmenu.com"
+    echo -e "${RED}❌ Lỗi khi lấy SSL certificate!${NC}"
     echo ""
-    echo -e "${YELLOW}⚠️  Chưa có SSL! Chạy: bash setup-ssl.sh${NC}"
+    echo "Kiểm tra lại:"
+    echo "1. Domain đã trỏ về IP VPS chưa?"
+    echo "2. Port 80 có bị firewall chặn không?"
+    echo "3. Nginx có chạy không? (docker ps)"
+    exit 1
 fi
 
+# ===================================================================
+# BƯỚC 8: RESTORE NGINX.CONF CHÍNH THỨC
+# ===================================================================
 echo ""
-echo "📊 LỆNH HỮU ÍCH:"
-echo "   Xem logs:        docker-compose -f docker-compose.production.yml logs -f"
-echo "   Xem logs backend: docker logs fnb_backend_prod -f"
-echo "   Dừng services:   docker-compose -f docker-compose.production.yml down"
-echo "   Khởi động lại:   docker-compose -f docker-compose.production.yml restart"
-echo "   Kiểm tra status: docker ps"
-echo "   Setup SSL:       bash setup-ssl.sh"
+echo "📝 Bước 6: Restore nginx.conf chính thức..."
+
+if [ -f "nginx.conf.backup" ]; then
+    cp nginx.conf.backup nginx.conf
+    echo -e "${GREEN}✅ Đã restore nginx.conf${NC}"
+else
+    echo -e "${YELLOW}⚠️  Không tìm thấy nginx.conf.backup${NC}"
+    echo "Vui lòng sao chép file nginx.conf từ template và cấu hình lại!"
+fi
+
+# ===================================================================
+# BƯỚC 9: KHỞI ĐỘNG LẠI TẤT CẢ SERVICES
+# ===================================================================
+echo ""
+echo "🚀 Bước 7: Khởi động lại tất cả services với SSL..."
+docker-compose -f docker-compose.production.yml down
+docker-compose -f docker-compose.production.yml up -d
+
+echo ""
+echo "⏳ Đợi services khởi động..."
+sleep 10
+
+# ===================================================================
+# BƯỚC 10: KIỂM TRA
+# ===================================================================
+echo ""
+echo "✅ HOÀN TẤT!"
+echo ""
+echo "========================================="
+echo "📊 THÔNG TIN SSL"
+echo "========================================="
+
+for domain in "${DOMAIN_ARRAY[@]}"; do
+    echo "✓ $domain → /etc/letsencrypt/live/$domain/"
+done
 
 echo ""
 echo "========================================="
-echo "✨ Chúc anh kinh doanh thành công!"
+echo "🔄 TỰ ĐỘNG GIA HẠN"
+echo "========================================="
+echo "Certbot sẽ tự động gia hạn SSL mỗi 12 giờ"
+echo "Certificate sẽ được gia hạn khi còn 30 ngày"
+
+echo ""
+echo "========================================="
+echo "📝 KIỂM TRA"
+echo "========================================="
+echo "1. Truy cập: https://admin.fnbsmartmenu.com"
+echo "2. Truy cập: https://api.fnbsmartmenu.com/docs"
+echo "3. Kiểm tra SSL: https://www.ssllabs.com/ssltest/"
+
+echo ""
+echo "========================================="
+echo "🎉 SETUP SSL HOÀN TẤT!"
 echo "========================================="
