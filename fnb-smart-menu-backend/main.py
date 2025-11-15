@@ -33,6 +33,7 @@ app.mount(STATIC_PATH, StaticFiles(directory=UPLOAD_DIRECTORY), name="static")
 
 # CORS
 origins = [
+    "http://103.110.84.109:3001"
     "http://localhost",
     "http://localhost:3000",
     "http://localhost:3001",
