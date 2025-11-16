@@ -1,0 +1,64 @@
+# Tệp: .github/workflows/deploy.yml
+# "Bản hướng dẫn" cho Robot CI/CD
+
+# 1. TÊN CỦA ROBOT
+name: Deploy to VPS (Triển khai lên VPS)
+
+# 2. KHI NÀO ROBOT CHẠY
+on:
+  push:
+    branches:
+      - main  # Chỉ chạy khi có code mới được đẩy lên nhánh "main"
+
+# 3. CÔNG VIỆC ROBOT CẦN LÀM
+jobs:
+  deploy:
+    # Đặt tên cho công việc
+    name: Deploy
+    # Robot sẽ chạy trên một máy ảo Ubuntu (do GitHub cung cấp)
+    runs-on: ubuntu-latest
+
+    # Các bước robot sẽ thực hiện
+    steps:
+      # Bước 1: In ra màn hình (để chúng ta biết nó đang chạy)
+      - name: 1. Bắt đầu quá trình triển khai
+        run: echo "🚀 Bắt đầu triển khai code mới lên VPS..."
+
+      # Bước 2: Cài đặt "Chìa khóa" (Private Key)
+      # Robot sẽ lấy "chìa khóa" từ két sắt (GitHub Secrets) và cài nó vào máy ảo
+      - name: 2. Cài đặt Chìa khóa SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          # Lấy chìa khóa từ Secret VPS_SSH_KEY
+          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+
+      # Bước 3: Đăng nhập vào VPS và chạy lệnh
+      # Đây là bước robot dùng chìa khóa để SSH vào VPS của bạn
+      - name: 3. Đăng nhập VPS và chạy lệnh triển khai
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          # Lấy thông tin đăng nhập từ GitHub Secrets
+          host: ${{ secrets.VPS_SSH_HOST }}
+          username: ${{ secrets.VPS_SSH_USERNAME }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # === CÁC LỆNH ROBOT SẼ CHẠY TRÊN VPS ===
+            
+            # 1. Đi đến thư mục dự án
+            echo "1/5 - Đi đến thư mục dự án..."
+            cd ${{ secrets.PROJECT_PATH }}
+            
+            # 2. Lấy code mới nhất từ GitHub
+            echo "2/5 - Kéo code mới nhất từ nhánh 'main'..."
+            git pull origin main
+            
+            # 3. Build và khởi động lại các container
+            echo "3/5 - Build lại image và khởi động lại dịch vụ..."
+            docker compose --env-file .env.production -f docker-compose.production.yml up -d --build
+            
+            # 4. Dọn dẹp các image cũ (không còn dùng)
+            echo "4/5 - Dọn dẹp image cũ..."
+            docker image prune -f
+            
+            # 5. Hoàn tất
+            echo "5/5 - Triển khai thành công! ✅"
