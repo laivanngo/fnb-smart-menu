@@ -1,5 +1,5 @@
-// Tệp: pages/dashboard/orders.js
-// (BẢN VÁ 1.7 - ĐÃ THÊM WEBSOCKET HOÀN CHỈNH)
+// File: pages/dashboard/orders.js
+// (PHIÊN BẢN 1.8 - ĐÃ SỬA WEBSOCKET URL ĐỂ HOẠT ĐỘNG TRÊN VPS)
 
 import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
@@ -267,7 +267,7 @@ export default function OrdersPage() {
     };
     // ⬆️ END HÀM HIỂN THỊ POPUP ⬆️
 
-    // ⬇️ WEBSOCKET CONNECTION ⬇️
+    // ⬇️ WEBSOCKET CONNECTION - ĐÃ SỬA LỖI ⬇️
     useEffect(() => {
         const token = getToken();
         if (!token) {
@@ -275,7 +275,33 @@ export default function OrdersPage() {
             return;
         }
         
-        const wsUrl = 'ws://localhost:8000/ws/admin/orders';
+        // ⭐ FIX: Tự động phát hiện WebSocket URL dựa trên môi trường
+        const getWebSocketUrl = () => {
+            if (!apiUrl) {
+                console.error('⚠️ NEXT_PUBLIC_API_URL chưa được cấu hình!');
+                return null;
+            }
+            
+            // Chuyển HTTP/HTTPS thành WS/WSS
+            let wsProtocol = 'ws://';
+            if (apiUrl.startsWith('https://')) {
+                wsProtocol = 'wss://';  // Dùng WSS cho HTTPS
+            }
+            
+            // Loại bỏ http:// hoặc https:// để lấy hostname
+            const hostname = apiUrl.replace('http://', '').replace('https://', '');
+            
+            // Xắp url cuối cùng
+            return `${wsProtocol}${hostname}/ws/admin/orders`;
+        };
+        
+        const wsUrl = getWebSocketUrl();
+        if (!wsUrl) {
+            console.error('❌ Không thể tạo WebSocket URL');
+            setIsConnected(false);
+            return;
+        }
+        
         console.log('🔌 Đang kết nối WebSocket:', wsUrl);
         
         ws.current = new WebSocket(wsUrl);

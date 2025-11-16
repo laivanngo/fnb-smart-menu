@@ -4,6 +4,10 @@
 # == PHIÊN BẢN CẢI TIẾN - ĐÃ SỬA CÁC VẤN ĐỀ                       ==
 # ===================================================================
 
+version: '3.9' # Thêm version để hỗ trợ các tính năng mới
+
+# ❌ ĐÃ XÓA env_file: ở đây (vì nó sai cú pháp)
+
 services:
   # --- Dịch vụ Backend (FastAPI) ---
   backend:
@@ -15,16 +19,18 @@ services:
       - ./fnb-smart-menu-backend/uploads:/app/uploads
     env_file:
       - .env.production
-    # ✅ THÊM: Expose port cho internal network
     expose:
       - "8000"
-    # ⚠️ TÙY CHỌN: Expose ra ngoài nếu cần debug (bỏ comment nếu cần)
-    # ports:
-    #   - "8000:8000"
     restart: always
     depends_on:
       db:
         condition: service_healthy
+    logging: &default-logging # <-- Định nghĩa anchor
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # ❌ ĐÃ XÓA 3 DÒNG LỖI (db: condition:) Ở ĐÂY
     networks:
       - fnb-net
 
@@ -35,19 +41,16 @@ services:
     env_file:
       - .env.production
     volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
-    # ✅ Healthcheck để đảm bảo DB ready
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
       timeout: 5s
       retries: 5
-    # ⚠️ TÙY CHỌN: Expose port cho DBeaver/DataGrip (bỏ comment nếu cần)
-    # ports:
-    #   - "5433:5432"
     restart: always
     networks:
       - fnb-net
+      # ❌ Đã xóa dòng network: lặp lại (nếu có)
 
   # --- Dịch vụ Frontend Khách hàng (Next.js) ---
   frontend:
@@ -55,14 +58,15 @@ services:
       context: ./fnb-smart-menu-frontend
       dockerfile: Dockerfile
       args:
+        # Biến này sẽ được nạp bằng cờ --env-file khi chạy
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: fnb_frontend_prod
-    # ✅ THÊM: Expose port cho internal network
     expose:
       - "3000"
     restart: always
     depends_on:
       - backend
+    logging: *default-logging # <-- Dùng alias
     networks:
       - fnb-net
 
@@ -72,14 +76,15 @@ services:
       context: ./fnb-smart-menu-admin
       dockerfile: Dockerfile
       args:
+        # Biến này sẽ được nạp bằng cờ --env-file khi chạy
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: fnb_admin_prod
-    # ✅ THÊM: Expose port cho internal network
     expose:
       - "3000"
     restart: always
     depends_on:
       - backend
+    logging: *default-logging # <-- Dùng alias
     networks:
       - fnb-net
 
@@ -91,17 +96,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # Mount file cấu hình Nginx
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      # Mount thư mục chứa certs của Let's Encrypt
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      # Mount thư mục xác thực của Certbot
       - ./certbot/www:/var/www/certbot:ro
     depends_on:
       - backend
       - admin
       - frontend
     restart: always
+    logging: *default-logging # <-- Dùng alias
     networks:
       - fnb-net
 
@@ -110,18 +113,69 @@ services:
     image: certbot/certbot
     container_name: fnb_certbot
     volumes:
-      # Mount thư mục chứa certs
       - /etc/letsencrypt:/etc/letsencrypt
-      # Mount thư mục xác thực
       - ./certbot/www:/var/www/certbot
-    # Chạy vòng lặp kiểm tra gia hạn mỗi 12 giờ
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+    logging: *default-logging # <-- Dùng alias
     networks:
       - fnb-net
 
+  # ======================================================
+  # --- DỊCH VỤ SAO LƯU CSDL (Backup) - ĐÃ SỬA LỖI $$ ---
+  # ======================================================
+  db-backup:
+    image: postgres:14-alpine
+    container_name: fnb_db_backup
+    env_file:
+      - .env.production
+    volumes:
+      - ./backups:/backups
+    networks:
+      - fnb-net
+    depends_on:
+      db:
+        condition: service_healthy
+    entrypoint: |
+      sh -c '
+        echo "Container sao lưu đã khởi động. Sẽ bắt đầu sao lưu đầu tiên sau 1 phút..."
+        sleep 60;
+        
+        while true; do
+          echo "[Backup] Bắt đầu quá trình sao lưu CSDL...";
+          
+          # 1. Xóa các bản sao lưu cũ (lớn hơn 7 ngày)
+          echo "[Backup] Xóa các bản sao lưu cũ hơn 7 ngày..."
+          find /backups -type f -name "*.sql.gz" -mtime +7 -exec rm {} \;
+          
+          # 2. Tạo tên file backup mới
+          # ✅ SỬA: Dùng $$() để Docker không thay thế
+          FILE_NAME="/backups/backup_$$(date +%Y-%m-%d_%H-%M-%S).sql.gz"
+          
+          # 3. Thực hiện sao lưu
+          # ✅ SỬA: Dùng $${FILE_NAME} và $$FILE_NAME
+          echo "[Backup] Đang tạo bản sao lưu: $${FILE_NAME}..."
+          # ($POSTGRES... là biến môi trường, nên vẫn giữ $ )
+          PGPASSWORD=$POSTGRES_PASSWORD pg_dump -h db -U $POSTGRES_USER $POSTGRES_DB | gzip > $$FILE_NAME
+          
+          # ✅ SỬA: Dùng $$?
+          if [ $$? -eq 0 ]; then
+            # ✅ SỬA: Dùng $$FILE_NAME
+            echo "[Backup] Sao lưu CSDL thành công: $$FILE_NAME"
+          else
+            echo "[Backup] Sao lưu CSDL thất bại!"
+          fi
+          
+          # 4. Ngủ 24 giờ (86400 giây)
+          echo "[Backup] Quá trình sao lưu hoàn tất, ngủ 24 giờ...";
+          sleep 86400
+        done
+      '
+    restart: always
+    logging: *default-logging
+
 # --- Định nghĩa Volumes & Networks ---
 volumes:
-  postgres_data_prod:
+  postgres_data: # Tên này phải khớp với file cũ
 
 networks:
   fnb-net:

@@ -62,11 +62,11 @@ export default function HomePage({ menuData, error }) {
   return (
     <div className="container">
       <Head>
-        <title>Trà Sữa & Cà Phê Express - Đặt hàng</title>
+        <title>Ngon-Ngon.com</title>
       </Head>
 
       <header className="header">
-        ☕ Trà Sữa Express
+        ☕ Ngon-Ngon
       </header>
 
       <main>
