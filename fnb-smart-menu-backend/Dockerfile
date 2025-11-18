@@ -18,13 +18,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # 5. Sao chép toàn bộ code của "Bộ não" vào "hộp"
 COPY . .
 
-# 6. Sao chép script khởi động (đã được cấp quyền +x)
-COPY entrypoint.sh .
-
-# 7. Mở "cổng" 8000 bên trong "hộp"
+# 6. Mở "cổng" 8000 bên trong "hộp"
 EXPOSE 8000
 
-# 8. Lệnh để khởi động "hộp"
+# 7. Lệnh để khởi động "hộp"
 # Sẽ chạy script entrypoint.sh của chúng ta
 ENTRYPOINT ["/app/entrypoint.sh"]
 

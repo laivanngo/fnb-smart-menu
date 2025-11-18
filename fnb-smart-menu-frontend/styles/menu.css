@@ -1,0 +1,318 @@
+/* Tệp: styles/menu.css */
+/* Global styles cho trang Menu - GrabFood inspired */
+
+/* ============ ANIMATIONS ============ */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUp {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* ============ SCROLLBAR STYLING ============ */
+/* Hide scrollbar cho category tabs */
+.category-scroll-container::-webkit-scrollbar {
+    display: none;
+}
+
+.category-scroll-container {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+
+/* Custom scrollbar cho main content */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #00b14f;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #009940;
+}
+
+/* ============ HOVER EFFECTS ============ */
+@media (hover: hover) {
+    .product-card:not(.disabled):hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+    }
+    
+    .add-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 4px 8px rgba(0,177,79,0.4) !important;
+    }
+    
+    .cart-button:hover {
+        background-color: #009940 !important;
+        transform: scale(1.02);
+    }
+    
+    .category-tab:not(.active):hover {
+        background-color: #f0f0f0;
+    }
+    
+    .category-tab.active:hover {
+        background-color: #00a045;
+    }
+    
+    .retry-button:hover {
+        background-color: #009940 !important;
+        transform: scale(1.02);
+    }
+}
+
+/* ============ FOCUS STATES (Accessibility) ============ */
+.add-button:focus,
+.cart-button:focus,
+.category-tab:focus,
+.retry-button:focus {
+    outline: 2px solid #00b14f;
+    outline-offset: 2px;
+}
+
+/* ============ RESPONSIVE BREAKPOINTS ============ */
+
+/* Mobile Small (< 480px) */
+@media (max-width: 480px) {
+    .products-grid {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+    
+    .header-content {
+        padding: 10px 15px !important;
+    }
+    
+    .logo {
+        font-size: 1.2rem !important;
+    }
+    
+    .category-scroll-container {
+        padding: 10px 15px !important;
+    }
+    
+    .category-tab {
+        padding: 6px 16px !important;
+        font-size: 0.85rem !important;
+    }
+    
+    .main {
+        padding: 15px !important;
+    }
+    
+    .category-title {
+        font-size: 1.1rem !important;
+    }
+    
+    .product-name {
+        font-size: 0.95rem !important;
+    }
+    
+    .product-description {
+        font-size: 0.8rem !important;
+    }
+    
+    .floating-cart-button {
+        display: block !important;
+        animation: slideUp 0.3s ease-out;
+    }
+}
+
+/* Mobile Medium (481px - 768px) */
+@media (min-width: 481px) and (max-width: 768px) {
+    .products-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 14px !important;
+    }
+    
+    .floating-cart-button {
+        display: block !important;
+    }
+    
+    .cart-button {
+        display: none !important;
+    }
+    
+    .delivery-info {
+        display: none !important;
+    }
+}
+
+/* Tablet (769px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .products-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: 16px !important;
+    }
+    
+    .floating-cart-button {
+        display: none !important;
+    }
+}
+
+/* Desktop (> 1024px) */
+@media (min-width: 1025px) {
+    .products-grid {
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important;
+    }
+    
+    .floating-cart-button {
+        display: none !important;
+    }
+    
+    /* Smooth transitions on desktop */
+    .product-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+}
+
+/* ============ LOADING STATES ============ */
+.skeleton {
+    background: linear-gradient(
+        90deg,
+        #f0f0f0 25%,
+        #e0e0e0 50%,
+        #f0f0f0 75%
+    );
+    background-size: 200% 100%;
+    animation: loading 1.5s ease-in-out infinite;
+}
+
+@keyframes loading {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -200% 0;
+    }
+}
+
+/* ============ TOUCH FEEDBACK (Mobile) ============ */
+@media (hover: none) {
+    .product-card:active {
+        transform: scale(0.98);
+    }
+    
+    .add-button:active {
+        transform: scale(0.95);
+    }
+    
+    .category-tab:active {
+        opacity: 0.8;
+    }
+    
+    .cart-button:active,
+    .floating-cart-button:active {
+        opacity: 0.9;
+    }
+}
+
+/* ============ UTILITY CLASSES ============ */
+.text-truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.line-clamp-3 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+/* ============ PRINT STYLES ============ */
+@media print {
+    .header,
+    .category-nav,
+    .floating-cart-button,
+    .add-button {
+        display: none !important;
+    }
+    
+    .product-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
+
+/* ============ DARK MODE SUPPORT (Optional) ============ */
+@media (prefers-color-scheme: dark) {
+    /* Có thể thêm dark mode styles nếu cần */
+    /* body {
+        background-color: #1a1a1a;
+        color: #ffffff;
+    } */
+}
+
+/* ============ ACCESSIBILITY ============ */
+/* Reduced motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .product-card {
+        border: 2px solid #000;
+    }
+    
+    .category-tab.active {
+        border: 2px solid #fff;
+    }
+}
+
+/* ============ SAFE AREA INSETS (iOS Notch support) ============ */
+@supports (padding: max(0px)) {
+    .header-content {
+        padding-left: max(20px, env(safe-area-inset-left));
+        padding-right: max(20px, env(safe-area-inset-right));
+    }
+    
+    .floating-cart-button {
+        left: max(20px, env(safe-area-inset-left));
+        right: max(20px, env(safe-area-inset-right));
+        bottom: max(20px, env(safe-area-inset-bottom));
+    }
+}

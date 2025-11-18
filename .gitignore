@@ -44,7 +44,6 @@ pnpm-debug.log*
 
 # --- Project-specific ignores ---
 # Backup files created by user
-docker-compose.production.yml.backup
 .env.production.backup
 deploy.sh.backup
 
@@ -58,3 +57,8 @@ certbot/
 *.db
 *.db-journal
 *.sqlite3
+
+# Tệp development
+docker-compose.development.yml
+nginx.development.conf
+.env.development

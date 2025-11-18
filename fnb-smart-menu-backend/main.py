@@ -33,19 +33,14 @@ app.mount(STATIC_PATH, StaticFiles(directory=UPLOAD_DIRECTORY), name="static")
 
 # CORS
 origins = [
-    "http://103.110.84.109:3001"
-    "http://localhost",
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1",
-    "http://127.0.0.1:3000",
-    "http://127.0.0.1:3001",
+    "http://admin.local.test",  # <-- Thiếu dấu phẩy
+    "http://local.test",        # <-
     "https://biitea.com",
     "https://ngon-ngon.com",
     "https://www.biitea.com",
     "https://menu.fnbsmartmenu.com",
     "https://admin.fnbsmartmenu.com",
-    "https://api.fnbsmartmenu.com" 
+    "https://api.fnbsmartmenu.com", 
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -225,7 +220,7 @@ async def upload_image(
     return {
         "message": "Image uploaded successfully",
         "filename": unique_filename,
-        "url": public_url
+        "image_url": public_url
     }
 
 # Category endpoints

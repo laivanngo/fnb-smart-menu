@@ -1,6 +1,7 @@
 // Tệp: pages/_app.js
 // Mục đích: "Đeo" chiếc túi (CartProvider) ra ngoài toàn bộ ứng dụng
 
+import '../styles/menu.css'
 import "@/styles/globals.css";
 // 1. Import "Chiếc túi"
 import { CartProvider } from "../context/CartContext";
