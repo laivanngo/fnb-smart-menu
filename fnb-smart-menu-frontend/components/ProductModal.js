@@ -3,7 +3,7 @@
 // (BẢN VÁ 1.5 - ĐÃ NÂNG CẤP TỒN KHO TOPPING)
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useCart } from '../context/CartContext.js.backup';
+import { useCart } from '../context/CartContext';
 
 const publicApiUrl = process.env.NEXT_PUBLIC_API_URL;
 

@@ -5,7 +5,7 @@
 // 2. Nút "Thanh toán" (với useRouter)
 
 import React, { useState, useEffect } from 'react';
-import { useCart } from '../context/CartContext.js.backup'; // Lấy "cái móc"
+import { useCart } from '../context/CartContext'; // Lấy "cái móc"
 import { useRouter } from 'next/router'; // 1. IMPORT "Bộ điều hướng"
 
 export default function CartDisplay() {

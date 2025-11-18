@@ -4,7 +4,7 @@
 import '../styles/menu.css'
 import "@/styles/globals.css";
 // 1. Import "Chiếc túi"
-import { CartProvider } from "../context/CartContext.js.backup";
+import { CartProvider } from "../context/CartContext";
 
 export default function App({ Component, pageProps }) {
   return (
