@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Head from 'next/head';
-import { useCart } from '../context/CartContext';
+import { useCart } from '../context/CartContext.js.backup';
 import ProductModal from '../components/ProductModal';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL;

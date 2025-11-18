@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
-import { useCart } from '../context/CartContext';
+import { useCart } from '../context/CartContext.js.backup';
 import { useRouter } from 'next/router';
 
 // 1. Lấy địa chỉ API từ biến môi trường
