@@ -1,86 +1,66 @@
-// Tệp: components/CartDisplay.js (Bản HOÀN CHỈNH)
-// Mục đích: Hiển thị giỏ hàng (lơ lửng)
-// Đã bao gồm:
-// 1. Sửa lỗi Hydration (với hasMounted)
-// 2. Nút "Thanh toán" (với useRouter)
-
+// Tệp: components/CartDisplay.js (Theme màu Cam)
 import React, { useState, useEffect } from 'react';
-import { useCart } from '../context/CartContext'; // Lấy "cái móc"
-import { useRouter } from 'next/router'; // 1. IMPORT "Bộ điều hướng"
+import { useCart } from '../context/CartContext';
+import { useRouter } from 'next/router';
 
-export default function CartDisplay() {
-  const [isOpen, setIsOpen] = useState(false); // Trạng thái Đóng/Mở
-  const { cartItems, itemCount, totalPrice, removeFromCart, updateQuantity } = useCart(); // Lấy mọi thứ từ "Chiếc túi"
-  const router = useRouter(); // 2. KHỞI TẠO "Bộ điều hướng"
-
-  // === PHẦN SỬA LỖI HYDRATION ===
-  // 3. Tạo một "bộ nhớ" (state) để kiểm tra
+export default function CartDisplay({ isOpen, setIsOpen }) {
+  const { cartItems, itemCount, totalPrice, removeFromCart, updateQuantity } = useCart();
+  const router = useRouter();
   const [hasMounted, setHasMounted] = useState(false);
 
-  // 4. Hàm này sẽ CHỈ CHẠY 1 LẦN ở "Client" (trình duyệt)
-  //    SAU KHI quá trình "khớp" (hydration) ban đầu hoàn tất
   useEffect(() => {
-    setHasMounted(true); // Đánh dấu: "Tôi đã ở trình duyệt"
-  }, []); // Mảng rỗng = chạy 1 lần duy nhất
+    setHasMounted(true);
+  }, []);
 
-  // 5. "CỔNG AN NINH"
-  // Nếu "chưa ở trình duyệt" (hasMounted là false),
-  // cả server và client (lần render đầu) sẽ đều không hiển thị gì cả.
-  // -> Chúng khớp nhau (đều là 'null') -> Hết lỗi!
-  if (!hasMounted) {
-    return null;
-  }
-  // === KẾT THÚC SỬA LỖI ===
+  if (!hasMounted) return null;
 
-
-  // 6. HÀM XỬ LÝ NÚT "THANH TOÁN"
   const handleCheckout = () => {
-    setIsOpen(false); // Đóng giỏ hàng
-    router.push('/checkout'); // Chuyển đến trang checkout
+    setIsOpen(false);
+    router.push('/checkout');
   };
 
-  // Nếu giỏ hàng đang mở, hiển thị chi tiết
   if (isOpen) {
     return (
-      <div className="cart-modal-backdrop" onClick={() => setIsOpen(false)}>
-        <div className="cart-modal-content" onClick={(e) => e.stopPropagation()}>
-          <div className="cart-header">
-            <h3>Giỏ hàng ({itemCount})</h3>
-            <button onClick={() => setIsOpen(false)} className="cart-close">×</button>
+      <div style={styles.backdrop} onClick={() => setIsOpen(false)}>
+        <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div style={styles.header}>
+            <h3 style={styles.title}>Giỏ hàng ({itemCount})</h3>
+            <button onClick={() => setIsOpen(false)} style={styles.closeBtn}>&times;</button>
           </div>
           
-          <div className="cart-items-list">
+          <div style={styles.list}>
             {cartItems.length === 0 ? (
-              <p style={{textAlign: 'center', padding: '20px'}}>Giỏ hàng trống</p>
+              <p style={styles.empty}>Giỏ hàng trống</p>
             ) : (
               cartItems.map(item => (
-                <div key={item.cartId} className="cart-item">
-                  <div className="cart-item-info">
-                    <strong>{item._display.name}</strong>
-                    <small>{item._display.optionsText}</small>
-                    {item.note && <small><em>Ghi chú: {item.note}</em></small>}
+                <div key={item.cartId} style={styles.item}>
+                  <div style={styles.itemInfo}>
+                    <strong style={styles.itemName}>{item._display.name}</strong>
+                    <div style={styles.itemOptions}>{item._display.optionsText}</div>
+                    {item.note && <div style={styles.itemNote}>Ghi chú: {item.note}</div>}
                   </div>
-                  <div className="cart-item-controls">
-                    <div className="quantity-selector-cart">
-                      <button onClick={() => updateQuantity(item.cartId, item.quantity - 1)}>-</button>
-                      <span>{item.quantity}</span>
-                      <button onClick={() => updateQuantity(item.cartId, item.quantity + 1)}>+</button>
+                  <div style={styles.itemControls}>
+                    <div style={styles.qtyControl}>
+                      <button style={styles.qtyBtn} onClick={() => updateQuantity(item.cartId, item.quantity - 1)}>-</button>
+                      <span style={styles.qtyVal}>{item.quantity}</span>
+                      <button style={styles.qtyBtn} onClick={() => updateQuantity(item.cartId, item.quantity + 1)}>+</button>
                     </div>
-                    <span>
+                    <div style={styles.itemPrice}>
                       {(item._display.itemPrice * item.quantity).toLocaleString('vi-VN')}đ
-                    </span>
-                    <button onClick={() => removeFromCart(item.cartId)} className="cart-remove">Xóa</button>
+                    </div>
+                    <button onClick={() => removeFromCart(item.cartId)} style={styles.removeBtn}>Xóa</button>
                   </div>
                 </div>
               ))
             )}
           </div>
           
-          <div className="cart-footer">
-            <strong>Tổng cộng: {totalPrice.toLocaleString('vi-VN')}đ</strong>
-            {/* Nút thanh toán gọi hàm handleCheckout */}
-            <button className="checkout-btn" onClick={handleCheckout}>
-              Thanh toán
+          <div style={styles.footer}>
+            <div style={styles.total}>
+              Tổng cộng: <span style={{color: '#FF6600'}}>{totalPrice.toLocaleString('vi-VN')}đ</span>
+            </div>
+            <button style={styles.checkoutBtn} onClick={handleCheckout}>
+              Thanh toán ngay
             </button>
           </div>
         </div>
@@ -88,15 +68,86 @@ export default function CartDisplay() {
     );
   }
 
-  // Nếu giỏ hàng đang đóng, chỉ hiển thị "nút nổi"
-  // (Đoạn code này cũng chỉ chạy khi hasMounted = true)
-  if (itemCount === 0) return null; // Ẩn luôn nếu giỏ trống
+  if (itemCount === 0) return null;
   
   return (
-    <div className="cart-fab" onClick={() => setIsOpen(true)}>
-      🛒
-      <span className="cart-fab-count">{itemCount}</span>
-      <span className="cart-fab-total">{totalPrice.toLocaleString('vi-VN')}đ</span>
-    </div>
+    <>
+      <div 
+        className="floating-cart-bar" 
+        style={styles.fab} 
+        onClick={() => setIsOpen(true)}
+      >
+        <span style={styles.fabIcon}>🛒</span>
+        <span style={styles.fabCount}>{itemCount}</span>
+        <span style={styles.fabTotal}>{totalPrice.toLocaleString('vi-VN')}đ</span>
+      </div>
+
+      <style jsx global>{`
+        @media (min-width: 769px) {
+          .floating-cart-bar {
+            display: none !important;
+          }
+        }
+      `}</style>
+    </>
   );
 }
+
+// STYLES
+const styles = {
+  fab: {
+    position: 'fixed', bottom: '20px', left: '20px', right: '20px',
+    backgroundColor: '#FF6600', color: 'white', borderRadius: '16px', // Màu Cam
+    padding: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+    boxShadow: '0 6px 15px rgba(255, 102, 0, 0.4)', cursor: 'pointer', zIndex: 999,
+    fontWeight: '800', fontSize: '1.1rem'
+  },
+  fabIcon: { fontSize: '1.3rem' },
+  fabCount: { 
+    backgroundColor: 'white', color: '#FF6600', padding: '2px 10px', 
+    borderRadius: '12px', fontSize: '0.9rem', marginLeft: '10px', fontWeight: '800'
+  },
+  fabTotal: { flex: 1, textAlign: 'right' },
+
+  backdrop: {
+    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 2000,
+    display: 'flex', alignItems: 'flex-end', justifyContent: 'center'
+  },
+  modal: {
+    backgroundColor: 'white', width: '100%', maxWidth: '500px',
+    borderTopLeftRadius: '20px', borderTopRightRadius: '20px',
+    maxHeight: '80vh', display: 'flex', flexDirection: 'column',
+    animation: 'slideUp 0.3s ease-out'
+  },
+  header: {
+    padding: '15px 20px', borderBottom: '1px solid #eee',
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+  },
+  title: { margin: 0, fontSize: '1.2rem', fontWeight: '700', color: '#333' },
+  closeBtn: { border: 'none', background: 'none', fontSize: '1.5rem', cursor: 'pointer', color: '#999' },
+  
+  list: { padding: '20px', overflowY: 'auto', flex: 1 },
+  empty: { textAlign: 'center', color: '#999', padding: '30px' },
+  
+  item: { marginBottom: '15px', paddingBottom: '15px', borderBottom: '1px solid #f5f5f5' },
+  itemInfo: { marginBottom: '8px' },
+  itemName: { display: 'block', fontSize: '1rem', marginBottom: '4px', fontWeight: '600' },
+  itemOptions: { fontSize: '0.85rem', color: '#666' },
+  itemNote: { fontSize: '0.85rem', color: '#888', fontStyle: 'italic' },
+  
+  itemControls: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  qtyControl: { display: 'flex', alignItems: 'center', border: '1px solid #eee', borderRadius: '6px', backgroundColor: '#f9f9f9' },
+  qtyBtn: { width: '28px', height: '28px', border: 'none', background: 'none', color: '#FF6600', fontWeight: 'bold', cursor: 'pointer' },
+  qtyVal: { minWidth: '20px', textAlign: 'center', fontSize: '0.9rem' },
+  itemPrice: { fontWeight: 'bold', color: '#FF6600' },
+  removeBtn: { border: 'none', background: 'none', color: '#dc3545', fontSize: '0.85rem', cursor: 'pointer' },
+
+  footer: { padding: '20px', borderTop: '1px solid #eee', backgroundColor: '#fff' },
+  total: { fontSize: '1.2rem', fontWeight: '800', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', color: '#333' },
+  checkoutBtn: {
+    width: '100%', padding: '15px', backgroundColor: '#FF6600', color: 'white', // Màu Cam
+    border: 'none', borderRadius: '12px', fontSize: '1.1rem', fontWeight: '800', cursor: 'pointer',
+    boxShadow: '0 4px 10px rgba(255, 102, 0, 0.3)'
+  }
+};
