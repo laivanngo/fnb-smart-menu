@@ -28,32 +28,35 @@ export default function LoginPage() {
 
         let response; // Khai báo response ở đây để dùng trong cả try/catch
         try {
+            // === SỬA ĐOẠN NÀY ===
+            // Backend FastAPI (OAuth2PasswordRequestForm) bắt buộc dùng form-data hoặc x-www-form-urlencoded
+            // Không được dùng JSON (JSON.stringify)
+            
             const formData = new URLSearchParams();
-            formData.append('username', username);
-            formData.append('password', password);
+            formData.append('username', username); // Phải đúng tên là 'username'
+            formData.append('password', password); // Phải đúng tên là 'password'
 
-            // === SỬA LỖI TẠI ĐÂY ===
-            // Đã thay thế 'http://127.0.0.1:8000/admin/token' bằng `${apiUrl}/admin/token`
-            response = await fetch(`${apiUrl}/admin/token`, { // Địa chỉ Backend
+            const response = await fetch(`${apiUrl}/admin/token`, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
+                    // Content-Type này rất quan trọng
+                    'Content-Type': 'application/x-www-form-urlencoded', 
                 },
-                body: formData,
+                body: formData, // Gửi object URLSearchParams
             });
-
+            // ====================
             // === KIỂM TRA PHẢN HỒI NGAY LẬP TỨC ===
             if (!response.ok) {
                 let errorDetail = 'Đăng nhập thất bại';
                 try {
-                    // Cố gắng đọc lỗi cụ thể từ Backend (nếu có)
                     const errorData = await response.json();
-                    errorDetail = errorData.detail || errorDetail;
+                    console.log("🔥 LỖI TỪ BACKEND:", errorData); // <--- Thêm dòng này
+                    errorDetail = errorData.detail || JSON.stringify(errorData);
                 } catch (jsonError) {
-                    // Nếu Backend không trả về lỗi JSON, dùng status text
+                    const textError = await response.text(); // Đọc text nếu không phải JSON
+                    console.log("🔥 LỖI TEXT TỪ BACKEND:", textError); // <--- Thêm dòng này
                     errorDetail = `Lỗi ${response.status}: ${response.statusText}`;
                 }
-                // Ném lỗi để nhảy vào khối catch bên dưới
                 throw new Error(errorDetail);
             }
 

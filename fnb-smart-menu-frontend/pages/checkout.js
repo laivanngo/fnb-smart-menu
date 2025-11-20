@@ -1,4 +1,4 @@
-// Tệp: pages/checkout.js (Theme màu Cam)
+// Tệp: pages/checkout.js (V3 - Fix cứng nút Đặt hàng dính đáy Mobile)
 import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { useCart } from '../context/CartContext';
@@ -8,7 +8,7 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
 export default function CheckoutPage() {
     const router = useRouter();
-    const { cartItems, totalPrice, itemCount, clearCart } = useCart();
+    const { cartItems, itemCount, clearCart } = useCart();
     
     const [customerInfo, setCustomerInfo] = useState({ name: '', phone: '', address: '', note: '' });
     const [deliveryMethod, setDeliveryMethod] = useState('TIEU_CHUAN');
@@ -113,7 +113,7 @@ export default function CheckoutPage() {
         }));
 
         const orderPayload = {
-            items: cartItems.map(item => ({ product_id: item.product_id, quantity: item.quantity, options: item.options, note: item.note })),
+            items: cartItems.map(item => ({ product_id: item.product_id, quantity: item.quantity, options: item.options, note: item.note, ordered_by: item.orderedBy })),
             voucher_code: calculation?.discount_amount > 0 ? voucherCode : null,
             delivery_method: deliveryMethod,
             customer_name: customerInfo.name, customer_phone: customerInfo.phone, customer_address: customerInfo.address, customer_note: customerInfo.note,
@@ -151,6 +151,7 @@ export default function CheckoutPage() {
             <Head><title>SUKA - Thanh toán</title></Head>
             <header className="header">🛒 Thanh toán</header>
             <form onSubmit={handlePlaceOrder}>
+                {/* FORM NHẬP LIỆU */}
                 <div className="checkout-form">
                      <h3>Thông tin Giao hàng</h3>
                     <input name="name" placeholder="Họ và Tên" value={customerInfo.name} onChange={handleInfoChange} required />
@@ -168,6 +169,8 @@ export default function CheckoutPage() {
                         <label> <input type="radio" name="payment" value="MOMO" checked={paymentMethod === 'MOMO'} onChange={(e) => setPaymentMethod(e.target.value)} /> 📱 MoMo </label>
                     </div>
                 </div>
+
+                {/* TÓM TẮT ĐƠN HÀNG */}
                 <div className="checkout-summary">
                     <h3>Đơn hàng của bạn ({itemCount})</h3>
                     <div className="cart-items-list-checkout">
@@ -198,13 +201,29 @@ export default function CheckoutPage() {
                          ) : ( error ? null : <p style={{textAlign: 'center', color: '#888'}}>Vui lòng chọn P.thức giao hàng</p> )}
                     </div>
                     {error && <p className="error-message">{error}</p>}
-                    <button type="submit" className="place-order-btn" disabled={isLoading || isCalculating || !calculation || itemCount === 0}>
-                        {isLoading ? 'Đang xử lý...' : '📦 ĐẶT HÀNG'}
+                    
+                    {/* NÚT ĐẶT HÀNG (Desktop nằm trong khung này) */}
+                    <div className="desktop-submit-btn">
+                        <button type="submit" className="place-order-btn" disabled={isLoading || isCalculating || !calculation || itemCount === 0}>
+                            {isLoading ? 'Đang xử lý...' : '📦 ĐẶT HÀNG'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* NÚT ĐẶT HÀNG MOBILE (Chỉ hiện trên Mobile, Dính đáy) */}
+                <div className="mobile-submit-bar">
+                    <div className="mobile-total-info">
+                        <span>Tổng cộng:</span>
+                        <strong>{calculation ? calculation.total_amount.toLocaleString('vi-VN')+'đ' : '...'}</strong>
+                    </div>
+                    <button type="submit" className="place-order-btn-mobile" disabled={isLoading || isCalculating || !calculation || itemCount === 0}>
+                        {isLoading ? 'Đang xử lý...' : 'ĐẶT HÀNG'}
                     </button>
                 </div>
             </form>
+            
             <style jsx>{`
-                .container { max-width: 1200px; margin: 0 auto; padding: 20px; font-family: 'Segoe UI', Roboto, sans-serif; background-color: #f9f9f9; min-height: 100vh; }
+                .container { max-width: 1200px; margin: 0 auto; padding: 20px; font-family: 'Segoe UI', Roboto, sans-serif; background-color: #f9f9f9; min-height: 100vh; padding-bottom: 100px; }
                 .header { font-size: 1.8rem; font-weight: 800; margin-bottom: 25px; color: #FF6600; border-bottom: 2px solid #FF6600; padding-bottom: 10px; display: inline-block; }
                 form { display: flex; gap: 30px; flex-wrap: wrap; }
                 .checkout-form { flex: 1.5; min-width: 300px; }
@@ -229,20 +248,50 @@ export default function CheckoutPage() {
                 .item-price { font-weight: 700; color: #333; }
 
                 .voucher-input-group { display: flex; margin-bottom: 25px; }
-
                 .checkout-total { margin-bottom: 25px; }
                 .total-row { display: flex; justify-content: space-between; margin-bottom: 10px; color: #666; font-size: 1rem; }
                 .total-row.final { font-weight: 800; font-size: 1.4rem; color: #FF6600; border-top: 2px dashed #eee; padding-top: 15px; margin-top: 15px; }
                 .total-row.discount { color: #28a745; }
 
+                /* NÚT DESKTOP */
                 .place-order-btn { width: 100%; padding: 16px; background: #FF6600; color: white; border: none; border-radius: 12px; font-size: 1.2rem; font-weight: 800; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(255, 102, 0, 0.3); }
                 .place-order-btn:hover { background: #e65c00; transform: translateY(-2px); }
                 .place-order-btn:disabled { background: #ccc; cursor: not-allowed; transform: none; box-shadow: none; }
+                
                 .error-message { color: #dc3545; margin-bottom: 15px; text-align: center; background: #fff0f0; padding: 10px; border-radius: 8px; }
 
+                /* ẨN HIỆN THEO THIẾT BỊ */
+                .mobile-submit-bar { display: none; } /* Mặc định ẩn thanh Mobile */
+
                 @media (max-width: 768px) {
-                    form { flex-direction: column; }
-                    .checkout-summary { order: -1; }
+                    form { flex-direction: column; padding-bottom: 60px; }
+                    .checkout-summary { order: -1; margin-bottom: 20px; }
+                    
+                    /* Ẩn nút trong khung summary đi */
+                    .desktop-submit-btn { display: none; }
+
+                    /* Hiện thanh Mobile dính đáy */
+                    .mobile-submit-bar {
+                        display: flex;
+                        position: fixed;
+                        bottom: 0; left: 0; right: 0;
+                        background: white;
+                        padding: 15px 20px;
+                        box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+                        z-index: 1000;
+                        align-items: center;
+                        justify-content: space-between;
+                    }
+                    
+                    .mobile-total-info { display: flex; flex-direction: column; }
+                    .mobile-total-info span { font-size: 0.9rem; color: #666; }
+                    .mobile-total-info strong { font-size: 1.2rem; color: #FF6600; }
+
+                    .place-order-btn-mobile {
+                        background: #FF6600; color: white; border: none;
+                        padding: 12px 30px; border-radius: 8px;
+                        font-weight: 800; font-size: 1.1rem;
+                    }
                 }
             `}</style>
         </div>

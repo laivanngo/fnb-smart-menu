@@ -4,6 +4,7 @@ import Head from 'next/head';
 import { useCart } from '../context/CartContext';
 import ProductModal from '../components/ProductModal';
 import CartDisplay from '../components/CartDisplay';
+import GroupOrderControl from '../components/GroupOrderControl';
 
 const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
@@ -76,7 +77,7 @@ export default function HomePage({ menuData, error }) {
                         <h1 style={styles.logo}>Ngon-Ngon</h1> 
                         <div style={styles.deliveryInfo}>
                             <span style={styles.deliveryIcon}>📍</span>
-                            <span style={styles.deliveryText}>Giao đến bạn</span>
+                            <span style={styles.deliveryText}>Giao hàng Miễn Phí tận công ty - ĐT/Zalo: 0378.148.148</span>
                         </div>
                     </div>
                     
@@ -113,6 +114,8 @@ export default function HomePage({ menuData, error }) {
                     ))}
                 </div>
             </nav>
+
+            <GroupOrderControl />
 
             <main style={styles.main}>
                 {categories.map(category => {

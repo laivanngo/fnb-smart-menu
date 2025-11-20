@@ -173,6 +173,7 @@ class OrderItemCreate(BaseModel):
     product_id: int
     quantity: int
     note: Optional[str] = None
+    ordered_by: Optional[str] = None
     options: List[int] # List of OptionValue IDs
 
 class OrderCalculateRequest(BaseModel):
@@ -212,6 +213,7 @@ class OrderItemDetail(BaseModel):
     quantity: int
     item_price: float
     item_note: Optional[str] = None
+    ordered_by: Optional[str] = None
     options_selected: List[OrderItemOptionDetail] = []
     model_config = ConfigDict(from_attributes=True)
 

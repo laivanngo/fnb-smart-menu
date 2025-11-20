@@ -73,7 +73,22 @@ function OrderDetails({ orderId, onClose }) {
                         <ul style={{listStyle: 'none', paddingLeft: 0, maxHeight: '200px', overflowY: 'auto'}}>
                             {orderDetails.items.map(item => (
                                 <li key={item.id} style={{marginBottom: '10px', borderBottom: '1px dashed #eee', paddingBottom: '5px'}}>
-                                    <strong>{item.quantity}x {item.product_name}</strong> ({formatCurrency(item.item_price)})
+                                    <strong>{item.quantity}x {item.product_name}</strong> 
+                                    
+        {item.ordered_by && (
+            <span style={{
+                marginLeft: '8px', 
+                backgroundColor: '#FF6600', 
+                color: 'white', 
+                padding: '2px 6px', 
+                borderRadius: '4px', 
+                fontSize: '0.8em'
+            }}>
+                {item.ordered_by}
+            </span>
+        )}
+        
+                                    ({formatCurrency(item.item_price)})
                                     {item.options_selected.length > 0 && (
                                         <ul style={{fontSize: '0.85em', color: '#555', paddingLeft: '15px'}}>
                                             {item.options_selected.map((opt, idx) => <li key={idx}>{opt.value_name}</li>)}
