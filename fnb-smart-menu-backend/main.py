@@ -95,16 +95,26 @@ def calculate_order(order_data: schemas.OrderCalculateRequest, db: Session = Dep
 
 @app.post("/orders", response_model=schemas.PublicOrderResponse, status_code=status.HTTP_201_CREATED)
 async def submit_new_order(order_data: schemas.OrderCreate, db: Session = Depends(get_db)):
+    """Khách bấm nút 'Đặt hàng'"""
+    # 1. Lưu đơn hàng vào Database
     db_order = crud.create_order(db, order_data)
+    
+    # 2. Bắn thông báo 'Ting ting' cho Admin qua WebSocket
+    # ### QUAN TRỌNG: PHẢI CÓ ĐOẠN NÀY ###
     if manager:
+        print(f"🔔 Đang gửi thông báo đơn mới #{db_order.id} tới KDS...")
         msg = {
             "type": "new_order",
             "order_id": db_order.id,
             "customer_name": db_order.customer_name,
-            "total_amount": db_order.total_amount,
+            "total_amount": float(db_order.total_amount), # Ép kiểu float cho an toàn
             "timestamp": datetime.now().isoformat()
         }
         await manager.broadcast(msg)
+    else:
+        print("⚠️ Lỗi: Không tìm thấy WebSocket Manager!")
+    # #####################################
+    
     return db_order
 
 # 2. WEBSOCKET
