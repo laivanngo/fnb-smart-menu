@@ -109,7 +109,7 @@ def create_option_value(db: Session, value: schemas.OptionValueCreate, option_id
     db.refresh(db_val)
     return db_val
 
-def link_product_options(db: Session, product_id: int, option_ids: List[int]):
+def link_product_to_options(db: Session, product_id: int, option_ids: List[int]):
     # Gán các nhóm tùy chọn vào sản phẩm
     db_prod = db.query(models.Product).filter(models.Product.id == product_id).first()
     if not db_prod: return None
