@@ -16,6 +16,11 @@ export default function HomePage({ menuData, error }) {
     const [selectedProduct, setSelectedProduct] = useState(null);
     const [isCartOpen, setIsCartOpen] = useState(false);
     
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     const categoryRefs = useRef({});
 
     useEffect(() => {
@@ -82,7 +87,7 @@ export default function HomePage({ menuData, error }) {
                     </div>
                     
                     {/* NÚT GIỎ HÀNG HEADER (Màu Cam) */}
-                    {itemCount > 0 && (
+                    {isMounted && itemCount > 0 && (
                         <div 
                             className="desktop-cart-btn" 
                             style={{...styles.cartButton, cursor: 'pointer'}} 

@@ -55,7 +55,10 @@ def delete_category(db: Session, category_id: int):
 # ==========================================
 def get_products(db: Session, skip: int = 0, limit: int = 100):
     # Lấy sản phẩm kèm theo thông tin danh mục
-    return db.query(models.Product).options(joinedload(models.Product.category)).offset(skip).limit(limit).all()
+    return db.query(models.Product)\
+        .options(joinedload(models.Product.category))\
+        .order_by(models.Product.display_order.asc())\
+        .offset(skip).limit(limit).all()
 
 def get_product(db: Session, product_id: int):
     # Lấy chi tiết sản phẩm kèm options
@@ -92,7 +95,10 @@ def delete_product(db: Session, product_id: int):
 # 4. OPTIONS (Quản lý Tùy chọn: Size, Đường, Đá...)
 # ==========================================
 def get_options(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Option).options(joinedload(models.Option.values)).offset(skip).limit(limit).all()
+    return db.query(models.Option)\
+        .options(joinedload(models.Option.values))\
+        .order_by(models.Option.display_order.asc())\
+        .offset(skip).limit(limit).all()
 
 def create_option(db: Session, option: schemas.OptionCreate):
     db_option = models.Option(name=option.name, type=option.type, display_order=option.display_order)
@@ -140,17 +146,15 @@ def get_public_menu(db: Session):
 # 6. ORDER & CALCULATE (Tính tiền & Đặt hàng)
 # ==========================================
 def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest):
-    # Logic tính tiền (Tạm tính, Phí ship, Giảm giá)
+    # 1. Tính tổng tiền hàng (Subtotal)
     sub_total = 0
     
-    # Duyệt qua từng món trong giỏ
     for item in order_data.items:
         product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         if not product: continue
         
-        item_price = float(product.base_price) # Lấy giá gốc
+        item_price = float(product.base_price)
         
-        # Cộng tiền option (Topping/Size)
         if item.options:
             option_values = db.query(models.OptionValue).filter(models.OptionValue.id.in_(item.options)).all()
             for val in option_values:
@@ -158,18 +162,53 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
         
         sub_total += item_price * item.quantity
 
-    # Phí giao hàng (Ví dụ đơn giản)
+    # 2. Tính phí giao hàng
     delivery_fee = 15000 if order_data.delivery_method == models.DeliveryMethod.NHANH else 0
     
-    # Tổng cộng
-    total_amount = sub_total + delivery_fee
+    # 3. XỬ LÝ VOUCHER (LOGIC MỚI)
+    discount_amount = 0
+    
+    # Nếu khách có gửi mã lên
+    if order_data.voucher_code:
+        # Tìm voucher trong DB (phải đang kích hoạt)
+        voucher = db.query(models.Voucher).filter(
+            models.Voucher.code == order_data.voucher_code,
+            models.Voucher.is_active == True
+        ).first()
+        
+        # Nếu tìm thấy voucher
+        if voucher:
+            # Kiểm tra: Đơn hàng có đủ giá trị tối thiểu không?
+            if sub_total >= float(voucher.min_order_value):
+                
+                # Trường hợp 1: Giảm số tiền cố định (Fixed)
+                if voucher.type == "fixed":
+                    discount_amount = float(voucher.value)
+                
+                # Trường hợp 2: Giảm theo phần trăm (Percentage)
+                elif voucher.type == "percentage":
+                    discount_amount = sub_total * (float(voucher.value) / 100)
+                    
+                    # Kiểm tra: Có vượt quá mức giảm tối đa không?
+                    if voucher.max_discount is not None and discount_amount > float(voucher.max_discount):
+                        discount_amount = float(voucher.max_discount)
+            else:
+                # Nếu không đủ điều kiện đơn tối thiểu -> Không giảm
+                print(f"Voucher {voucher.code} yêu cầu đơn tối thiểu {voucher.min_order_value}")
+
+    # Đảm bảo tiền giảm không lớn hơn tiền hàng (không để âm tiền)
+    if discount_amount > sub_total:
+        discount_amount = sub_total
+
+    # 4. Tổng cuối cùng
+    total_amount = sub_total + delivery_fee - discount_amount
     
     return schemas.OrderCalculateResponse(
         sub_total=sub_total,
         delivery_fee=delivery_fee,
-        discount_amount=0, # Chưa tính voucher
-        total_amount=total_amount
-    ) 
+        discount_amount=discount_amount,
+        total_amount=total_amount if total_amount > 0 else 0
+    )
 
 def create_order(db: Session, order: schemas.OrderCreate):
     # Tính toán lại giá tiền lần cuối ở server để bảo mật (không tin client gửi lên)
@@ -250,7 +289,9 @@ def create_order(db: Session, order: schemas.OrderCreate):
 # 7. ADMIN ORDER VIEW (Xem đơn hàng)
 # ==========================================
 def get_orders(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Order).order_by(models.Order.id.desc()).offset(skip).limit(limit).all()
+    return db.query(models.Order).options(
+        subqueryload(models.Order.items).subqueryload(models.OrderItem.options_selected)
+    ).order_by(models.Order.id.desc()).offset(skip).limit(limit).all()
 
 def get_order_details(db: Session, order_id: int):
     # Lấy đơn hàng kèm theo items và options đã chọn
@@ -265,3 +306,77 @@ def update_order_status(db: Session, order_id: int, status: models.OrderStatus):
         db.commit()
         db.refresh(db_order)
     return db_order
+
+# ==========================================
+# 8. QUẢN LÝ GIÁ TRỊ TÙY CHỌN (OPTION VALUES) - Thêm mới đoạn này
+# ==========================================
+def update_option_value(db: Session, value_id: int, value_data: schemas.OptionValueUpdate):
+    db_val = db.query(models.OptionValue).filter(models.OptionValue.id == value_id).first()
+    if not db_val: return None
+    
+    # Chỉ cập nhật những trường được gửi lên (exclude_unset=True)
+    for key, value in value_data.model_dump(exclude_unset=True).items():
+        setattr(db_val, key, value)
+        
+    db.commit()
+    db.refresh(db_val)
+    return db_val
+
+def delete_option_value(db: Session, value_id: int):
+    db_val = db.query(models.OptionValue).filter(models.OptionValue.id == value_id).first()
+    if not db_val: return None
+    db.delete(db_val)
+    db.commit()
+    return db_val
+
+# ==========================================
+# 9. QUẢN LÝ NHÓM TÙY CHỌN (OPTIONS) - Thêm mới đoạn này
+# ==========================================
+def update_option(db: Session, option_id: int, option_update: schemas.OptionUpdate):
+    db_opt = db.query(models.Option).filter(models.Option.id == option_id).first()
+    if not db_opt: return None
+    
+    # Cập nhật các trường (tên, thứ tự, loại...)
+    for key, value in option_update.model_dump(exclude_unset=True).items():
+        setattr(db_opt, key, value)
+        
+    db.commit()
+    db.refresh(db_opt)
+    return db_opt
+
+def delete_option(db: Session, option_id: int):
+    db_opt = db.query(models.Option).filter(models.Option.id == option_id).first()
+    if not db_opt: return None
+    db.delete(db_opt)
+    db.commit()
+    return db_opt
+
+# ==========================================
+# 10. QUẢN LÝ VOUCHER (MÃ GIẢM GIÁ) - Thêm mới đoạn này
+# ==========================================
+def get_vouchers(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Voucher).offset(skip).limit(limit).all()
+
+def create_voucher(db: Session, voucher: schemas.VoucherCreate):
+    db_voucher = models.Voucher(**voucher.model_dump())
+    db.add(db_voucher)
+    db.commit()
+    db.refresh(db_voucher)
+    return db_voucher
+
+def update_voucher(db: Session, voucher_id: int, voucher: schemas.VoucherCreate):
+    db_voucher = db.query(models.Voucher).filter(models.Voucher.id == voucher_id).first()
+    if not db_voucher: return None
+    # Cập nhật các trường
+    for key, value in voucher.model_dump(exclude_unset=True).items():
+        setattr(db_voucher, key, value)
+    db.commit()
+    db.refresh(db_voucher)
+    return db_voucher
+
+def delete_voucher(db: Session, voucher_id: int):
+    db_voucher = db.query(models.Voucher).filter(models.Voucher.id == voucher_id).first()
+    if not db_voucher: return None
+    db.delete(db_voucher)
+    db.commit()
+    return db_voucher
