@@ -1,236 +1,180 @@
-// Tệp: components/ProductModal.js (Theme màu Cam)
-import React, { useState, useMemo } from 'react';
+// Tệp: fnb-smart-menu-frontend/components/ProductModal.js
+// (BẢN FINAL - POPUP CHUẨN GRAB)
+
+import React, { useState } from 'react';
 import { useCart } from '../context/CartContext';
 
-const publicApiUrl = process.env.NEXT_PUBLIC_API_URL;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
 export default function ProductModal({ product, onClose }) {
     if (!product) return null;
-
     const { addToCart } = useCart();
     const [quantity, setQuantity] = useState(1);
     const [note, setNote] = useState('');
-    
-    const [selectedOptions, setSelectedOptions] = useState(() => {
-        const defaults = {};
-        (product.options || []).forEach(option => {
-            if (option.type === 'CHON_1' && option.values.length > 0) {
-                const firstAvailableValue = option.values.find(v => !v.is_out_of_stock);
-                defaults[option.id] = firstAvailableValue ? firstAvailableValue.id : null;
-            } else {
-                defaults[option.id] = [];
-            }
-        });
-        return defaults;
-    });
+    const [selectedOptions, setSelectedOptions] = useState({});
 
-    const handleQuantityChange = (delta) => {
-        const newQty = quantity + delta;
-        if (newQty >= 1) setQuantity(newQty);
-    };
-    
-    const handleOptionChange = (option, value) => {
-        if (value.is_out_of_stock) return;
+    // Xử lý ảnh
+    const getImageUrl = (url) => (url && url.startsWith('/')) ? `${apiUrl}${url}` : url;
 
-        setSelectedOptions(prev => {
-            const newState = { ...prev };
-            const optionId = option.id;
-            const valueId = value.id;
-
-            if (option.type === 'CHON_1') { 
-                newState[optionId] = valueId; 
-            } else {
-                const currentSelection = prev[optionId] || [];
-                if (currentSelection.includes(valueId)) {
-                    newState[optionId] = currentSelection.filter(id => id !== valueId);
-                } else {
-                    newState[optionId] = [...currentSelection, valueId];
+    const calculatePrice = () => {
+        let price = product.base_price;
+        if (product.options) {
+            product.options.forEach(opt => {
+                const selectedValIds = selectedOptions[opt.id];
+                if (selectedValIds) {
+                    if (Array.isArray(selectedValIds)) {
+                        selectedValIds.forEach(id => {
+                            const val = opt.values.find(v => v.id === id);
+                            if (val) price += val.price_adjustment;
+                        });
+                    } else {
+                        const val = opt.values.find(v => v.id === selectedValIds);
+                        if (val) price += val.price_adjustment;
+                    }
                 }
-            }
-            return newState;
-        });
+            });
+        }
+        return price;
     };
 
-    const totalPrice = useMemo(() => {
-        let itemPrice = product.base_price; 
-        Object.keys(selectedOptions).forEach(optionId => {
-            const selected = selectedOptions[optionId];
-            const optionGroup = (product.options || []).find(o => o.id == optionId);
-            if (!optionGroup) return;
-
-            if (Array.isArray(selected)) {
-                selected.forEach(valueId => {
-                    const value = optionGroup.values.find(v => v.id == valueId);
-                    if (value) itemPrice += value.price_adjustment;
-                });
-            } else if (selected) {
-                const value = optionGroup.values.find(v => v.id == selected);
-                if (value) itemPrice += value.price_adjustment;
-            }
+    const handleOptionChange = (optId, valId, type) => {
+        setSelectedOptions(prev => {
+            if (type === 'CHON_1') return { ...prev, [optId]: valId };
+            const current = prev[optId] || [];
+            return { ...prev, [optId]: current.includes(valId) ? current.filter(id => id !== valId) : [...current, valId] };
         });
-        return itemPrice * quantity;
-    }, [product, selectedOptions, quantity]);
+    };
 
     const handleAddToCart = () => {
-        const allOptionValueIds = Object.values(selectedOptions).flat().filter(id => id !== null);
-        const itemPricePerUnit = totalPrice / quantity;
-        let optionsDisplay = [];
-        
-        (product.options || []).forEach(option => {
-            const selected = selectedOptions[option.id];
-            if (Array.isArray(selected) && selected.length > 0) {
-                selected.forEach(valueId => {
-                    const value = option.values.find(v => v.id == valueId);
-                    if(value) optionsDisplay.push(value.name);
-                });
-            } else if (!Array.isArray(selected) && selected) {
-                const value = option.values.find(v => v.id == selected);
-                if(value) optionsDisplay.push(value.name);
+        // Logic gộp options... (như cũ)
+        let flatOptions = [];
+        let optionsTextArr = [];
+        Object.values(selectedOptions).forEach(val => {
+            if (Array.isArray(val)) flatOptions.push(...val); else flatOptions.push(val);
+        });
+        if (product.options) {
+            product.options.forEach(opt => {
+                const selected = selectedOptions[opt.id];
+                if (selected) {
+                    if (Array.isArray(selected)) {
+                        selected.forEach(id => {
+                            const v = opt.values.find(x => x.id === id);
+                            if (v) optionsTextArr.push(v.name);
+                        });
+                    } else {
+                        const v = opt.values.find(x => x.id === selected);
+                        if (v) optionsTextArr.push(v.name);
+                    }
+                }
+            });
+        }
+
+        addToCart({
+            product_id: product.id,
+            quantity,
+            note,
+            options: flatOptions,
+            _display: {
+                name: product.name,
+                itemPrice: calculatePrice(),
+                optionsText: optionsTextArr.join(', ')
             }
         });
-
-        const cartItem = {
-            product_id: product.id, 
-            quantity: quantity, 
-            note: note, 
-            options: allOptionValueIds, 
-            _display: { 
-                name: product.name, 
-                image: product.image_url, 
-                itemPrice: itemPricePerUnit, 
-                optionsText: optionsDisplay.join(', ')
-            }
-        };
-        addToCart(cartItem);
-        onClose(); 
+        onClose();
     };
 
-    const getImageUrl = (url) => {
-        if (!url) return null;
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-        if (url.startsWith('http')) return url;
-        if (url.startsWith('/')) return `${apiUrl}${url}`;
-        return url;
-    };
-
-    const isEmoji = (url) => url && !url.startsWith('http') && !url.startsWith('/') && url.length < 10;
-    
     return (
         <div style={styles.overlay} onClick={onClose}>
             <div style={styles.modal} onClick={e => e.stopPropagation()}>
-                <button style={styles.closeButton} onClick={onClose}>&times;</button>
-                <div style={styles.imageContainer}>
-                    {product.image_url ? (
-                        isEmoji(product.image_url) ? (
-                            <div style={styles.emojiImage}>{product.image_url}</div>
-                        ) : (
-                            <img 
-                                src={getImageUrl(product.image_url)} 
-                                alt={product.name} 
-                                style={styles.image}
-                            />
-                        )
-                    ) : (
-                        <div style={styles.emojiImage}>🍽️</div>
-                    )}
+                
+                {/* Header: Nút X */}
+                <div style={styles.header}>
+                    <h3 style={styles.productName}>{product.name}</h3>
+                    <button onClick={onClose} style={styles.closeBtn}>&times;</button>
                 </div>
 
-                <div style={styles.content}>
-                    <div style={styles.header}>
-                        <h2 style={styles.title}>{product.name}</h2>
-                        <p style={styles.price}>{product.base_price.toLocaleString('vi-VN')}đ</p>
-                    </div>
+                {/* Body: Cuộn nội dung */}
+                <div style={styles.body}>
+                    {product.image_url && (
+                        <div style={styles.imgWrapper}>
+                            <img src={getImageUrl(product.image_url)} style={{width:'100%', height:'100%', objectFit:'cover'}} />
+                        </div>
+                    )}
                     
-                    <p style={styles.description}>{product.description}</p>
+                    <div style={styles.desc}>{product.description}</div>
+                    <div style={styles.basePrice}>{product.base_price.toLocaleString()}đ</div>
 
-                    {(product.options || []).map(option => (
-                        <div key={option.id} style={styles.section}>
-                            <label style={styles.label}>{option.name} ({option.type === 'CHON_1' ? 'Chọn 1' : 'Chọn nhiều'})</label>
-                            {(option.values || []).map(value => (
-                                <div key={value.id} style={styles.optionItem}>
-                                    <label style={styles.optionLabel}>
-                                        <input
-                                            type={option.type === 'CHON_1' ? 'radio' : 'checkbox'}
-                                            name={`option-${option.id}`}
-                                            style={styles.optionInput}
-                                            checked={
-                                                option.type === 'CHON_1'
-                                                    ? selectedOptions[option.id] === value.id
-                                                    : selectedOptions[option.id]?.includes(value.id)
-                                            }
-                                            onChange={() => handleOptionChange(option, value)}
-                                            disabled={value.is_out_of_stock}
+                    {/* Options */}
+                    {product.options?.map(opt => (
+                        <div key={opt.id} style={styles.optionGroup}>
+                            <div style={styles.optHeader}>
+                                <b>{opt.name}</b>
+                                <span style={styles.optBadge}>{opt.type === 'CHON_1' ? 'Bắt buộc' : 'Tùy chọn'}</span>
+                            </div>
+                            {opt.values.map(val => (
+                                <label key={val.id} style={styles.optRow}>
+                                    <div style={{display:'flex', alignItems:'center'}}>
+                                        <input 
+                                            type={opt.type === 'CHON_1' ? 'radio' : 'checkbox'}
+                                            name={`opt-${opt.id}`}
+                                            className="custom-input"
+                                            checked={opt.type === 'CHON_1' ? selectedOptions[opt.id] === val.id : (selectedOptions[opt.id] || []).includes(val.id)}
+                                            onChange={() => handleOptionChange(opt.id, val.id, opt.type)}
                                         />
-                                        <span style={styles.optionName}>
-                                            {value.name}
-                                            {value.is_out_of_stock && <span style={styles.outOfStockLabel}>(Hết hàng)</span>}
-                                        </span>
-                                        {value.price_adjustment !== 0 && (
-                                            <span style={styles.optionPrice}>
-                                                {value.price_adjustment > 0 ? '+' : ''}{value.price_adjustment.toLocaleString('vi-VN')}đ
-                                            </span>
-                                        )}
-                                    </label>
-                                </div>
+                                        <span style={{marginLeft:'10px'}}>{val.name}</span>
+                                    </div>
+                                    <span style={{color:'#666'}}>+{val.price_adjustment.toLocaleString()}đ</span>
+                                </label>
                             ))}
                         </div>
                     ))}
 
-                    <div style={styles.section}>
-                        <label style={styles.label}>Ghi chú cho quán</label>
-                        <input 
-                            type="text" 
-                            placeholder="Ví dụ: Ít đá, nhiều đường..."
-                            style={styles.input}
-                            value={note}
-                            onChange={(e) => setNote(e.target.value)}
-                        />
-                    </div>
+                    <textarea placeholder="Ghi chú thêm..." style={styles.noteInput} value={note} onChange={e=>setNote(e.target.value)} />
+                </div>
 
-                    <div style={styles.footer}>
-                        <div style={styles.quantityControl}>
-                            <button style={styles.qtyBtn} onClick={() => handleQuantityChange(-1)}>-</button>
-                            <span style={styles.qtyValue}>{quantity}</span>
-                            <button style={styles.qtyBtn} onClick={() => handleQuantityChange(1)}>+</button>
-                        </div>
-                        
-                        <button style={styles.addButton} onClick={handleAddToCart}>
-                            Thêm vào giỏ - {totalPrice.toLocaleString('vi-VN')}đ
-                        </button>
+                {/* Footer: Dính ở dưới */}
+                <div style={styles.footer}>
+                    <div style={styles.qtyControl}>
+                        <button onClick={() => setQuantity(q => Math.max(1, q - 1))} style={styles.qtyBtn}>-</button>
+                        <span style={styles.qtyVal}>{quantity}</span>
+                        <button onClick={() => setQuantity(q => q + 1)} style={styles.qtyBtn}>+</button>
                     </div>
+                    <button onClick={handleAddToCart} style={styles.addBtn}>
+                        Thêm vào giỏ - {(calculatePrice() * quantity).toLocaleString()}đ
+                    </button>
                 </div>
             </div>
+
+            <style jsx global>{`
+                .custom-input { accent-color: #FF6600; width: 18px; height: 18px; cursor: pointer; }
+            `}</style>
         </div>
     );
 }
 
-// Styles
 const styles = {
-    overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' },
-    modal: { backgroundColor: 'white', width: '100%', maxWidth: '450px', borderRadius: '16px', overflow: 'hidden', position: 'relative', maxHeight: '90vh', display: 'flex', flexDirection: 'column' },
-    closeButton: { position: 'absolute', top: '10px', right: '10px', width: '30px', height: '30px', borderRadius: '50%', border: 'none', backgroundColor: 'rgba(0,0,0,0.5)', color: 'white', fontSize: '20px', cursor: 'pointer', zIndex: 2 },
-    imageContainer: { width: '100%', paddingTop: '60%', position: 'relative', backgroundColor: '#fff5ec' },
-    image: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', objectFit: 'cover' },
-    emojiImage: { position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', fontSize: '5rem' },
-    content: { padding: '20px', overflowY: 'auto' },
-    header: { display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '10px' },
-    title: { margin: 0, fontSize: '1.3rem', fontWeight: '700', color: '#333' },
-    price: { margin: 0, fontSize: '1.3rem', fontWeight: '700', color: '#FF6600' }, // Giá màu Cam
-    description: { color: '#666', fontSize: '0.9rem', marginBottom: '20px', lineHeight: '1.4' },
-    section: { marginBottom: '20px' },
-    label: { display: 'block', fontWeight: '700', marginBottom: '10px', fontSize: '1rem', color: '#333' },
-    input: { width: '100%', padding: '12px', border: '1px solid #ddd', borderRadius: '8px', fontSize: '1rem', backgroundColor: '#f9f9f9' },
-
-    optionItem: { marginBottom: '10px', padding: '8px 0', borderBottom: '1px solid #f5f5f5' },
-    optionLabel: { display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' },
-    optionInput: { marginRight: '10px', accentColor: '#FF6600' }, // Radio/Checkbox màu Cam
-    optionName: { flex: 1, fontSize: '0.95rem', fontWeight: '500' },
-    optionPrice: { fontSize: '0.9rem', fontWeight: '700', color: '#FF6600' },
-    outOfStockLabel: { color: '#dc3545', fontSize: '0.8rem', fontWeight: '500', marginLeft: '8px' },
+    overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center' },
+    modal: { background: 'white', width: '100%', maxWidth: '550px', maxHeight: '90vh', borderRadius: '12px', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' },
     
-    footer: { marginTop: 'auto', paddingTop: '20px', borderTop: '1px solid #eee', display: 'flex', gap: '15px' },
-    quantityControl: { display: 'flex', alignItems: 'center', border: '1px solid #eee', borderRadius: '8px', padding: '4px', backgroundColor: '#f9f9f9' },
-    qtyBtn: { width: '32px', height: '32px', border: 'none', backgroundColor: 'transparent', fontSize: '1.2rem', fontWeight: 'bold', color: '#FF6600', cursor: 'pointer' },
-    qtyValue: { width: '30px', textAlign: 'center', fontWeight: '600', fontSize: '1rem' },
-    addButton: { flex: 1, backgroundColor: '#FF6600', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '1.1rem', boxShadow: '0 4px 10px rgba(255, 102, 0, 0.3)' } // Nút thêm màu Cam
+    header: { padding: '15px 20px', borderBottom: '1px solid #eee', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+    productName: { margin: 0, fontSize: '1.1rem', color: '#333' },
+    closeBtn: { border: 'none', background: 'transparent', fontSize: '2rem', cursor: 'pointer', lineHeight: '1rem', color: '#888' },
+
+    body: { padding: '20px', overflowY: 'auto', flex: 1 },
+    imgWrapper: { width: '100%', height: '200px', borderRadius: '8px', overflow: 'hidden', marginBottom: '15px', backgroundColor:'#f9f9f9' },
+    desc: { color: '#666', fontSize: '0.9rem', marginBottom: '5px' },
+    basePrice: { fontSize: '1.2rem', fontWeight: 'bold', color: '#333', marginBottom: '20px' },
+
+    optionGroup: { marginBottom: '25px' },
+    optHeader: { display: 'flex', justifyContent: 'space-between', marginBottom: '10px' },
+    optBadge: { background: '#eee', fontSize: '0.75rem', padding: '2px 8px', borderRadius: '10px', color: '#666' },
+    optRow: { display: 'flex', justifyContent: 'space-between', padding: '8px 0', cursor: 'pointer' },
+
+    noteInput: { width: '100%', padding: '10px', border: '1px solid #ddd', borderRadius: '8px', marginTop: '10px' },
+
+    footer: { padding: '15px 20px', borderTop: '1px solid #eee', display: 'flex', gap: '15px', background: '#fff' },
+    qtyControl: { display: 'flex', alignItems: 'center', border: '1px solid #ddd', borderRadius: '8px' },
+    qtyBtn: { width: '35px', height: '35px', border: 'none', background: 'white', fontSize: '1.2rem', cursor: 'pointer', color: '#FF6600', fontWeight: 'bold' },
+    qtyVal: { minWidth: '30px', textAlign: 'center', fontWeight: '600' },
+    addBtn: { flex: 1, background: '#FF6600', color: 'white', border: 'none', borderRadius: '8px', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' }
 };

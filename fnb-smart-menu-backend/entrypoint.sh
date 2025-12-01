@@ -5,12 +5,18 @@
 echo "--- Chạy Entrypoint ---"
 
 # 1. Chạy "Người gác cổng" để chờ CSDL
+# Giữ nguyên bước này để đảm bảo Database đã bật trước khi code chạy
 echo "Đang chờ CSDL sẵn sàng..."
 python wait-for-db.py
 
-# 2. Đảm bảo các bảng trong database đã được tạo
-echo "Đang tạo bảng (nếu chưa có)..."
-python models.py
+# 2. QUAN TRỌNG: Chạy Migration (Thay thế cho việc chạy models.py cũ)
+# Lệnh này giúp Database tự động cập nhật các bảng mới hoặc cột mới
+echo "Đang cập nhật cấu trúc Database (Alembic)..."
+alembic upgrade head
+
+# Lưu ý: Mình đã tắt dòng cũ bên dưới vì Alembic đã lo việc tạo bảng rồi.
+# echo "Đang tạo bảng (nếu chưa có)..."
+# python models.py
 
 # 3. Chạy kịch bản nhập hàng mẫu (seed)
 echo "Đang nhập hàng mẫu (nếu cần)..."

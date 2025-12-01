@@ -1,162 +1,114 @@
-// Tệp: context/CartContext.js (V5 - Real-time Group Order)
-import React, { createContext, useContext, useReducer, useEffect, useState, useRef } from 'react';
+// Tệp: fnb-smart-menu-frontend/context/CartContext.js
+// (BẢN CHUẨN - LOGIC GIỎ HÀNG & ĐƠN NHÓM)
+
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 
 const CartContext = createContext();
 
-// Helper: Tính tổng tiền
-const updateCartState = (items) => {
-  items = Array.isArray(items) ? items : [];
-  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalPrice = items.reduce((sum, item) => sum + (item._display.itemPrice * item.quantity), 0);
-  
-  // Chỉ lưu local nếu KHÔNG phải đơn nhóm (đơn nhóm lưu trên RAM để đồng bộ realtime)
-  if (typeof window !== 'undefined') {
-      // Có thể lưu tạm để F5 không mất, nhưng ở đây ta giữ đơn giản
-      localStorage.setItem('cart', JSON.stringify({ items, itemCount, totalPrice }));
-  }
-  return { items, itemCount, totalPrice };
-};
-
-const cartReducer = (state, action) => {
-  switch (action.type) {
-    case 'ADD_TO_CART': {
-      const newItem = action.payload;
-      // ID bao gồm tên người đặt để tách riêng món của từng người
-      const cartId = `${newItem.product_id}-${newItem.options.sort().join('-')}-${newItem.note}-${newItem.orderedBy}`;
-      
-      const existingItemIndex = state.items.findIndex(item => item.cartId === cartId);
-      let newItems;
-      if (existingItemIndex > -1) {
-        newItems = state.items.map((item, index) => {
-          if (index === existingItemIndex) {
-            return { ...item, quantity: item.quantity + newItem.quantity };
-          }
-          return item;
-        });
-      } else {
-        newItems = [...state.items, { ...newItem, cartId: cartId }];
-      }
-      return updateCartState(newItems);
-    }
-    case 'REMOVE_FROM_CART': {
-      const newItems = state.items.filter(item => item.cartId !== action.payload);
-      return updateCartState(newItems);
-    }
-    case 'UPDATE_QUANTITY': {
-      const { cartId, quantity } = action.payload;
-      const newItems = state.items.map(item => item.cartId === cartId ? { ...item, quantity } : item).filter(item => item.quantity > 0);
-      return updateCartState(newItems);
-    }
-    case 'CLEAR_CART': {
-      if (typeof window !== 'undefined') localStorage.removeItem('cart');
-      return { items: [], itemCount: 0, totalPrice: 0 };
-    }
-    default: return state;
-  }
-};
-
 export function CartProvider({ children }) {
-  const [state, dispatch] = useReducer(cartReducer, { items: [], itemCount: 0, totalPrice: 0 }, (initial) => {
-      if (typeof window === 'undefined') return initial;
-      try {
-          const localData = localStorage.getItem('cart');
-          return localData ? JSON.parse(localData) : initial;
-      } catch { return initial; }
-  });
-
-  // --- LOGIC ĐƠN NHÓM REAL-TIME ---
-  const [groupMode, setGroupMode] = useState(false);
-  const [groupId, setGroupId] = useState(null);
-  const [currentUser, setCurrentUser] = useState('Tôi');
-  const groupWs = useRef(null);
-
-  // 1. Tự động kiểm tra URL khi vào web (Ví dụ: ?group=123)
-  useEffect(() => {
-      if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          const gId = params.get('group');
-          if (gId) {
-              setGroupId(gId);
-              setGroupMode(true);
-              // Hỏi tên nếu chưa có
-              const savedName = localStorage.getItem('userName');
-              if (savedName) {
-                  setCurrentUser(savedName);
-              } else {
-                  // Tạm thời set default, component GroupOrderControl sẽ lo việc hỏi tên sau
-                  setCurrentUser('Thành viên mới');
-              }
-          }
-      }
-  }, []);
-
-  // 2. Kết nối WebSocket khi có Group ID
-  useEffect(() => {
-      if (groupMode && groupId) {
-          const wsProtocol = process.env.NEXT_PUBLIC_API_URL.startsWith('https') ? 'wss' : 'ws';
-          const wsHost = process.env.NEXT_PUBLIC_API_URL.replace(/^https?:\/\//, '');
-          const wsUrl = `${wsProtocol}://${wsHost}/ws/group/${groupId}`;
-
-          console.log("🔌 Connecting to Group WS:", wsUrl);
-          groupWs.current = new WebSocket(wsUrl);
-
-          groupWs.current.onopen = () => console.log("✅ Connected to Group Order!");
-          
-          groupWs.current.onmessage = (event) => {
-              const data = JSON.parse(event.data);
-              console.log("📩 Received:", data);
-
-              if (data.type === 'UPDATE_CART') {
-                  if (data.action === 'ADD') {
-                      // Nhận món từ người khác -> Thêm vào giỏ mình
-                      dispatch({ type: 'ADD_TO_CART', payload: data.item });
-                  }
-                  // (Có thể mở rộng thêm action REMOVE hoặc UPDATE sau này)
-              }
-          };
-
-          return () => {
-              if (groupWs.current) groupWs.current.close();
-          };
-      }
-  }, [groupMode, groupId]);
-
-
-  // 3. Hàm thêm vào giỏ (Có gửi tín hiệu đi)
-  const addToCart = (itemPayload) => {
-    const itemWithUser = { ...itemPayload, orderedBy: currentUser };
+    // State Giỏ hàng
+    const [cartItems, setCartItems] = useState([]);
     
-    // A. Thêm vào giỏ hàng của mình trước
-    dispatch({ type: 'ADD_TO_CART', payload: itemWithUser });
+    // State Đơn nhóm
+    const [groupMode, setGroupMode] = useState(false);
+    const [currentUser, setCurrentUser] = useState('Tôi');
 
-    // B. Nếu đang trong nhóm -> Gửi tín hiệu cho người khác
-    if (groupMode && groupWs.current && groupWs.current.readyState === WebSocket.OPEN) {
-        const message = {
-            type: 'UPDATE_CART',
-            action: 'ADD',
-            item: itemWithUser,
-            user: currentUser
-        };
-        groupWs.current.send(JSON.stringify(message));
-    }
-  };
-  
-  const removeFromCart = (id) => dispatch({ type: 'REMOVE_FROM_CART', payload: id });
-  const updateQuantity = (id, qty) => dispatch({ type: 'UPDATE_QUANTITY', payload: { cartId: id, quantity: qty } });
-  const clearCart = () => dispatch({ type: 'CLEAR_CART' });
+    // 1. Load giỏ hàng từ LocalStorage khi khởi động
+    useEffect(() => {
+        const savedCart = localStorage.getItem('shopping_cart');
+        if (savedCart) {
+            try {
+                setCartItems(JSON.parse(savedCart));
+            } catch (e) {
+                console.error("Lỗi đọc giỏ hàng cũ", e);
+            }
+        }
+    }, []);
 
-  const value = {
-    cartItems: state.items,
-    itemCount: state.itemCount,
-    totalPrice: state.totalPrice,
-    addToCart, removeFromCart, updateQuantity, clearCart,
-    // Export biến Group
-    groupMode, setGroupMode,
-    groupId, setGroupId,
-    currentUser, setCurrentUser
-  };
+    // 2. Lưu giỏ hàng mỗi khi thay đổi
+    useEffect(() => {
+        localStorage.setItem('shopping_cart', JSON.stringify(cartItems));
+    }, [cartItems]);
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+    // 3. Hàm thêm vào giỏ (Thông minh: Tự cộng dồn nếu trùng món + option + người đặt)
+    const addToCart = (newItem) => {
+        setCartItems(prev => {
+            // Tạo ID duy nhất cho món dựa trên: ID món + Options + Note + Người đặt
+            // Sắp xếp options để [1,2] giống [2,1]
+            const sortedOptions = newItem.options ? [...newItem.options].sort().join('-') : '';
+            const uniqueKey = `${newItem.product_id}_${sortedOptions}_${newItem.note || ''}_${groupMode ? currentUser : ''}`;
+
+            const existingItemIndex = prev.findIndex(item => {
+                const itemKey = `${item.product_id}_${item.options ? [...item.options].sort().join('-') : ''}_${item.note || ''}_${item.orderedBy || ''}`;
+                return itemKey === uniqueKey;
+            });
+
+            if (existingItemIndex > -1) {
+                // Món đã có -> Cộng thêm số lượng
+                const newCart = [...prev];
+                newCart[existingItemIndex].quantity += newItem.quantity;
+                return newCart;
+            } else {
+                // Món mới -> Thêm vào list (Gán thêm cartId để quản lý)
+                return [...prev, { 
+                    ...newItem, 
+                    cartId: Date.now() + Math.random(),
+                    orderedBy: groupMode ? currentUser : '' // Lưu tên người đặt nếu là đơn nhóm
+                }];
+            }
+        });
+    };
+
+    // 4. Xóa món
+    const removeFromCart = (cartId) => {
+        setCartItems(prev => prev.filter(item => item.cartId !== cartId));
+    };
+
+    // 5. Cập nhật số lượng
+    const updateQuantity = (cartId, newQty) => {
+        if (newQty < 1) {
+            if (confirm("Bạn muốn xóa món này?")) removeFromCart(cartId);
+            return;
+        }
+        setCartItems(prev => prev.map(item => item.cartId === cartId ? { ...item, quantity: newQty } : item));
+    };
+
+    // 6. Xóa sạch giỏ
+    const clearCart = () => {
+        setCartItems([]);
+        localStorage.removeItem('shopping_cart');
+    };
+
+    // 7. Tính tổng tiền & Tổng số lượng
+    const { itemCount, totalPrice } = useMemo(() => {
+        return cartItems.reduce((acc, item) => {
+            acc.itemCount += item.quantity;
+            // Giá item đã được tính sẵn trong _display.itemPrice lúc thêm vào
+            acc.totalPrice += (item._display?.itemPrice || 0) * item.quantity;
+            return acc;
+        }, { itemCount: 0, totalPrice: 0 });
+    }, [cartItems]);
+
+    return (
+        <CartContext.Provider value={{
+            cartItems,
+            addToCart,
+            removeFromCart,
+            updateQuantity,
+            clearCart,
+            itemCount,
+            totalPrice,
+            // Group Order Props
+            groupMode,
+            setGroupMode,
+            currentUser,
+            setCurrentUser
+        }}>
+            {children}
+        </CartContext.Provider>
+    );
 }
 
-export function useCart() { return useContext(CartContext); }
+export function useCart() {
+    return useContext(CartContext);
+}
