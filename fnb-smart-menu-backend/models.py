@@ -1,12 +1,11 @@
-# Tệp: models.py (FINAL FIX - Đã thêm DeliveryAssignment)
-
 import os
 import enum
 from sqlalchemy import (
     create_engine, Column, Integer, String, Boolean, ForeignKey, 
-    Enum as SAEnum, DateTime, func, Text, Numeric, Float # <--- Đã có Float
+    Enum as SAEnum, DateTime, func, Text, Numeric, Float, Date
 )
 from sqlalchemy.orm import relationship, sessionmaker, DeclarativeBase
+from sqlalchemy.dialects.postgresql import JSONB  # Dùng cho tính năng lưu sở thích khách hàng
 
 # --- Cấu hình CSDL ---
 DB_USER = os.getenv("POSTGRES_USER", "postgres")
@@ -22,7 +21,10 @@ class Base(DeclarativeBase):
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# --- ENUM (DANH SÁCH ĐỊNH NGHĨA) ---
+# ==========================================
+# PHẦN 0: CÁC ĐỊNH NGHĨA ENUM (QUY TẮC)
+# ==========================================
+
 class OptionType(enum.Enum):
     CHON_1 = "CHON_1"
     CHON_NHIEU = "CHON_NHIEU"
@@ -48,12 +50,10 @@ class DeliveryMethod(enum.Enum):
     TIEU_CHUAN = "TIEU_CHUAN"
     NHANH = "NHANH"
 
-# === BỔ SUNG CÁI NÀY ĐỂ SỬA LỖI ===
 class DeliveryAssignment(enum.Enum):
     CHUA_PHAN_CONG = "CHUA_PHAN_CONG"
     TU_GIAO = "TU_GIAO"
     THUE_SHIP = "THUE_SHIP"
-# ==================================
 
 class UserRole(enum.Enum):
     SUPER_ADMIN = "SUPER_ADMIN"
@@ -61,8 +61,14 @@ class UserRole(enum.Enum):
     STAFF = "STAFF"
     CUSTOMER = "CUSTOMER"
 
+# [MỚI] Enum cho trạng thái bàn
+class TableStatus(enum.Enum):
+    TRONG = "TRONG"         # Bàn đang trống
+    CO_KHACH = "CO_KHACH"   # Đang có khách ngồi
+    DAT_TRUOC = "DAT_TRUOC" # Đã được đặt trước
+
 # ==========================================
-# PHẦN 1: CORE SAAS
+# PHẦN 1: CORE SAAS & CRM KHÁCH HÀNG
 # ==========================================
 
 class Store(Base):
@@ -75,6 +81,7 @@ class Store(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    # Relationships
     users = relationship("User", back_populates="store", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="store", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="store", cascade="all, delete-orphan")
@@ -82,6 +89,7 @@ class Store(Base):
     orders = relationship("Order", back_populates="store", cascade="all, delete-orphan")
     ingredients = relationship("Ingredient", back_populates="store", cascade="all, delete-orphan")
     tables = relationship("Table", back_populates="store", cascade="all, delete-orphan")
+    vouchers = relationship("Voucher", back_populates="store", cascade="all, delete-orphan")
 
 class User(Base):
     __tablename__ = "users"
@@ -92,8 +100,22 @@ class User(Base):
     phone = Column(String, index=True)
     email = Column(String, nullable=True)
     role = Column(SAEnum(UserRole), default=UserRole.CUSTOMER)
-    points = Column(Integer, default=0)
     
+    # --- [MỚI] CRM & GROWTH ENGINE ---
+    birthday = Column(Date, nullable=True)  # Chúc mừng sinh nhật
+    gender = Column(String, nullable=True)  
+    
+    # Chỉ số RFM (Recency - Frequency - Monetary)
+    last_order_date = Column(DateTime(timezone=True), nullable=True) # Lần cuối mua
+    total_spent = Column(Numeric(12, 0), default=0) # Tổng tiền đã chi
+    order_count = Column(Integer, default=0)        # Tổng số đơn đã mua
+    points = Column(Integer, default=0)             # Điểm tích lũy hiện tại
+    
+    # Sức mạnh JSONB: Lưu sở thích, tag hành vi (VD: {"thich_ngot": true, "tags": ["VIP"]})
+    preferences = Column(JSONB, default={}) 
+    internal_note = Column(Text, nullable=True) # Ghi chú nội bộ cho nhân viên
+    # ---------------------------------
+
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
     store = relationship("Store", back_populates="users")
     
@@ -173,7 +195,7 @@ class Ingredient(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     unit = Column(String)
-    current_stock = Column(Float, default=0) # Float ok cho số lượng
+    current_stock = Column(Float, default=0) 
     min_stock_alert = Column(Float, default=10)
     
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
@@ -195,21 +217,21 @@ class Recipe(Base):
     amount_needed = Column(Float, nullable=False)
 
 # ==========================================
-# PHẦN 4: ĐƠN HÀNG
+# PHẦN 4: QUẢN LÝ BÀN & ĐƠN HÀNG
 # ==========================================
 
 class Table(Base):
     __tablename__ = "tables"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False) # Tên bàn (VD: Bàn 1, Bàn VIP)
-    capacity = Column(Integer, default=4) # Số ghế
-    status = Column(String, default="TRONG") # Trạng thái: TRONG, CO_KHACH
+    name = Column(String, nullable=False) # VD: Bàn 1, Bàn VIP
+    capacity = Column(Integer, default=4) 
     
-    # Liên kết với Cửa hàng
+    # [MỚI] Sử dụng Enum chuyên nghiệp
+    status = Column(SAEnum(TableStatus), default=TableStatus.TRONG)
+    
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
     store = relationship("Store", back_populates="tables")
     
-    # Liên kết với Đơn hàng (để biết bàn này đang có đơn nào)
     orders = relationship("Order", back_populates="table")
 
 class Order(Base):
@@ -235,8 +257,6 @@ class Order(Base):
     status = Column(SAEnum(OrderStatus), default=OrderStatus.MOI)
     payment_method = Column(SAEnum(PaymentMethod), default=PaymentMethod.TIEN_MAT)
     delivery_method_selected = Column(SAEnum(DeliveryMethod), nullable=False)
-    
-    # Giờ đây DeliveryAssignment đã được định nghĩa ở trên, dòng này sẽ chạy OK
     delivery_assignment = Column(SAEnum(DeliveryAssignment), default=DeliveryAssignment.CHUA_PHAN_CONG)
     
     voucher_code = Column(String, nullable=True)
@@ -246,6 +266,7 @@ class Order(Base):
     
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
 
+    # Liên kết bàn (Nullable=True vì đơn mang đi không cần bàn)
     table_id = Column(Integer, ForeignKey("tables.id", ondelete="SET NULL"), nullable=True)
     table = relationship("Table", back_populates="orders")
 
@@ -261,7 +282,7 @@ class OrderItem(Base):
     
     item_price = Column(Numeric(12, 0), nullable=False)
     item_note = Column(String)
-    ordered_by = Column(String, nullable=True)
+    ordered_by = Column(String, nullable=True) # Lưu tên nhân viên tạo món
     
     options_selected = relationship("OrderItemOption", back_populates="order_item", cascade="all, delete-orphan")
 
@@ -275,6 +296,10 @@ class OrderItemOption(Base):
     value_name = Column(String)
     added_price = Column(Numeric(12, 0))
 
+# ==========================================
+# PHẦN 5: MARKETING & ADMIN
+# ==========================================
+
 class Voucher(Base):
     __tablename__ = "vouchers"
     id = Column(Integer, primary_key=True, index=True)
@@ -287,6 +312,7 @@ class Voucher(Base):
     is_active = Column(Boolean, default=True)
     
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
+    store = relationship("Store", back_populates="vouchers") # Added back_populates for completeness
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
