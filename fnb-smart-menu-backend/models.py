@@ -81,6 +81,7 @@ class Store(Base):
     options = relationship("Option", back_populates="store", cascade="all, delete-orphan")
     orders = relationship("Order", back_populates="store", cascade="all, delete-orphan")
     ingredients = relationship("Ingredient", back_populates="store", cascade="all, delete-orphan")
+    tables = relationship("Table", back_populates="store", cascade="all, delete-orphan")
 
 class User(Base):
     __tablename__ = "users"
@@ -197,6 +198,20 @@ class Recipe(Base):
 # PHẦN 4: ĐƠN HÀNG
 # ==========================================
 
+class Table(Base):
+    __tablename__ = "tables"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False) # Tên bàn (VD: Bàn 1, Bàn VIP)
+    capacity = Column(Integer, default=4) # Số ghế
+    status = Column(String, default="TRONG") # Trạng thái: TRONG, CO_KHACH
+    
+    # Liên kết với Cửa hàng
+    store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
+    store = relationship("Store", back_populates="tables")
+    
+    # Liên kết với Đơn hàng (để biết bàn này đang có đơn nào)
+    orders = relationship("Order", back_populates="table")
+
 class Order(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, index=True)
@@ -230,6 +245,9 @@ class Order(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
+
+    table_id = Column(Integer, ForeignKey("tables.id", ondelete="SET NULL"), nullable=True)
+    table = relationship("Table", back_populates="orders")
 
 class OrderItem(Base):
     __tablename__ = "order_items"
