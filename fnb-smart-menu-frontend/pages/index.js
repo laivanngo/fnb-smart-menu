@@ -55,7 +55,7 @@ export default function HomePage({ menuData, error }) {
                         <h1 style={styles.storeName}>Ngon-Ngon Coffee & Tea</h1>
                         {/* Badge thông tin liên hệ nền trong suốt */}
                         <div style={styles.contactBadge}>
-                            📍 Giao hàng Miễn Phí tận công ty - ĐT/Zalo: 0378.148.148
+                            📍 Giao hàng tận công ty - ĐT/Zalo: 0378.148.148
                         </div>
                     </div>
                 </div>

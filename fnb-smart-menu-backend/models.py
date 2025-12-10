@@ -252,6 +252,8 @@ class Order(Base):
     sub_total = Column(Numeric(12, 0), nullable=False)
     delivery_fee = Column(Numeric(12, 0), default=0)
     discount_amount = Column(Numeric(12, 0), default=0)
+    discount_amount = Column(Numeric(12, 0), default=0) # Giảm giá từ Voucher
+    points_discount = Column(Numeric(12, 0), default=0) # [MỚI] Giảm giá từ đổi điểm
     total_amount = Column(Numeric(12, 0), nullable=False)
     
     status = Column(SAEnum(OrderStatus), default=OrderStatus.MOI)

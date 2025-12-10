@@ -1,4 +1,4 @@
-# File: fnb-smart-menu-backend/main.py (BẢN FINAL - TỰ ĐỘNG SỬA LỖI)
+# File: fnb-smart-menu-backend/main.py (FINAL - SUPER APP)
 
 from dotenv import load_dotenv
 load_dotenv() 
@@ -6,7 +6,7 @@ load_dotenv()
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, WebSocket, WebSocketDisconnect
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from fastapi.staticfiles import StaticFiles
 import shutil
 import os
@@ -31,7 +31,15 @@ STATIC_PATH = "/static"
 os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
 app.mount(STATIC_PATH, StaticFiles(directory=UPLOAD_DIRECTORY), name="static")
 
-origins = ["*"] 
+origins = [
+    "https://api.fnbsmartmenu.com",
+    "https://admin.fnbsmartmenu.com",
+    "https://ngon-ngon.com",
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+] 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -47,15 +55,14 @@ def get_db():
     finally:
         db.close()
 
-# === TỰ ĐỘNG SỬA LỖI THỨ TỰ KHI KHỞI ĐỘNG ===
+# === TỰ ĐỘNG SỬA LỖI & KHỞI TẠO ===
 @app.on_event("startup")
 def on_startup():
     models.create_tables()
     
-    # Logic tự động sửa lỗi thứ tự (Thay thế cho script fix_order.py)
+    # Logic tự động sửa lỗi thứ tự hiển thị
     db = SessionLocal()
     try:
-        # Kiểm tra xem có sản phẩm nào đang có thứ tự = 0 không
         zero_order_products = db.query(models.Product).filter(models.Product.display_order == 0).all()
         if zero_order_products:
             print("🛠️ Phát hiện sản phẩm chưa có số thứ tự. Đang tự động cập nhật...")
@@ -69,9 +76,9 @@ def on_startup():
     finally:
         db.close()
 
-# ... (CÁC API GIỮ NGUYÊN NHƯ CŨ) ...
-
-# 0. UPLOAD
+# ============================================================
+# 0. UPLOAD ẢNH
+# ============================================================
 @app.post("/admin/upload-image")
 async def upload_image(file: UploadFile = File(...), current_user = Depends(security.get_current_admin)):
     try:
@@ -84,7 +91,9 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(secu
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi lưu ảnh: {str(e)}")
 
-# 1. API KHÁCH
+# ============================================================
+# 1. API KHÁCH HÀNG (MENU & ĐẶT MÓN)
+# ============================================================
 @app.get("/menu", response_model=List[schemas.PublicCategory])
 def get_full_menu(db: Session = Depends(get_db)):
     return crud.get_public_menu(db)
@@ -95,29 +104,31 @@ def calculate_order(order_data: schemas.OrderCalculateRequest, db: Session = Dep
 
 @app.post("/orders", response_model=schemas.PublicOrderResponse, status_code=status.HTTP_201_CREATED)
 async def submit_new_order(order_data: schemas.OrderCreate, db: Session = Depends(get_db)):
-    """Khách bấm nút 'Đặt hàng'"""
-    # 1. Lưu đơn hàng vào Database
+    """
+    Khách bấm nút 'Đặt hàng'.
+    Hỗ trợ cả bàn (table_id) và khách thành viên (user_id).
+    """
+    # 1. Lưu đơn hàng
     db_order = crud.create_order(db, order_data)
     
-    # 2. Bắn thông báo 'Ting ting' cho Admin qua WebSocket
-    # ### QUAN TRỌNG: PHẢI CÓ ĐOẠN NÀY ###
+    # 2. Gửi thông báo WebSocket
     if manager:
-        print(f"🔔 Đang gửi thông báo đơn mới #{db_order.id} tới KDS...")
+        print(f"🔔 Đang gửi thông báo đơn mới #{db_order.id}...")
         msg = {
             "type": "new_order",
             "order_id": db_order.id,
             "customer_name": db_order.customer_name,
-            "total_amount": float(db_order.total_amount), # Ép kiểu float cho an toàn
+            "table_id": db_order.table_id, # Gửi thêm thông tin bàn để KDS biết
+            "total_amount": float(db_order.total_amount),
             "timestamp": datetime.now().isoformat()
         }
         await manager.broadcast(msg)
-    else:
-        print("⚠️ Lỗi: Không tìm thấy WebSocket Manager!")
-    # #####################################
     
     return db_order
 
-# 2. WEBSOCKET
+# ============================================================
+# 2. WEBSOCKET (REAL-TIME)
+# ============================================================
 @app.websocket("/ws/admin/orders")
 async def websocket_admin(websocket: WebSocket):
     await manager.connect(websocket)
@@ -137,7 +148,9 @@ async def websocket_group(websocket: WebSocket, group_id: str):
     except WebSocketDisconnect:
         manager.disconnect_group(websocket, group_id)
 
-# 3. LOGIN
+# ============================================================
+# 3. ĐĂNG NHẬP ADMIN
+# ============================================================
 @app.post("/admin/token", response_model=schemas.Token)
 async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     admin = crud.get_admin_by_username(db, form_data.username)
@@ -145,7 +158,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = 
         raise HTTPException(status_code=400, detail="Sai tài khoản hoặc mật khẩu")
     return {"access_token": security.create_access_token(data={"sub": admin.username}), "token_type": "bearer"}
 
-# 4. CATEGORIES
+# ============================================================
+# 4. QUẢN LÝ DANH MỤC (CATEGORIES)
+# ============================================================
 @app.get("/admin/categories/", response_model=List[schemas.Category])
 def read_categories(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
     return crud.get_categories(db, skip, limit)
@@ -164,7 +179,9 @@ def delete_category(cat_id: int, db: Session = Depends(get_db), current_user=Dep
     if not result: raise HTTPException(status_code=404, detail="Không tìm thấy danh mục")
     return result
 
-# 5. PRODUCTS
+# ============================================================
+# 5. QUẢN LÝ SẢN PHẨM (PRODUCTS)
+# ============================================================
 @app.get("/admin/products/", response_model=List[schemas.Product])
 def read_products(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
     return crud.get_products(db, skip, limit)
@@ -187,7 +204,9 @@ def delete_product(prod_id: int, db: Session = Depends(get_db), current_user=Dep
 def link_options(prod_id: int, link_request: schemas.ProductLinkOptionsRequest, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
     return crud.link_product_to_options(db, prod_id, link_request.option_ids)
 
-# 6. OPTIONS
+# ============================================================
+# 6. QUẢN LÝ TÙY CHỌN (OPTIONS)
+# ============================================================
 @app.get("/admin/options/", response_model=List[schemas.Option])
 def read_options(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
     return crud.get_options(db, skip, limit)
@@ -224,7 +243,9 @@ def delete_option(option_id: int, db: Session = Depends(get_db), current_user=De
     if not result: raise HTTPException(status_code=404, detail="Không tìm thấy nhóm tùy chọn")
     return result
 
-# 7. ORDERS
+# ============================================================
+# 7. QUẢN LÝ ĐƠN HÀNG (ORDERS) - [NÂNG CẤP THÔNG MINH]
+# ============================================================
 @app.get("/admin/orders/", response_model=List[schemas.OrderDetail]) 
 def read_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user = Depends(security.get_current_admin)):
     return crud.get_orders(db, skip, limit)
@@ -235,10 +256,19 @@ def read_order_detail(order_id: int, db: Session = Depends(get_db), current_user
 
 @app.put("/admin/orders/{order_id}/status", response_model=schemas.AdminOrderListResponse)
 def update_status(order_id: int, status: models.OrderStatus, db: Session = Depends(get_db), current_user = Depends(security.get_current_admin)):
-    return crud.update_order_status(db, order_id, status)
+    """
+    Cập nhật trạng thái đơn hàng.
+    Nếu trạng thái là HOAN_TAT -> Kích hoạt logic cộng điểm & trả bàn.
+    """
+    if status == models.OrderStatus.HOAN_TAT:
+        # Gọi hàm 'Magic' trong crud để xử lý tích điểm
+        return crud.complete_order(db, order_id)
+    else:
+        # Gọi hàm cập nhật thường
+        return crud.update_order_status(db, order_id, status)
 
 # ============================================================
-# 8. API ADMIN - QUẢN LÝ VOUCHER (MÃ GIẢM GIÁ) - Thêm mới đoạn này
+# 8. QUẢN LÝ VOUCHER (MÃ GIẢM GIÁ)
 # ============================================================
 @app.get("/admin/vouchers/", response_model=List[schemas.Voucher])
 def read_vouchers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
@@ -251,13 +281,27 @@ def create_voucher(voucher: schemas.VoucherCreate, db: Session = Depends(get_db)
 @app.put("/admin/vouchers/{voucher_id}", response_model=schemas.Voucher)
 def update_voucher(voucher_id: int, voucher: schemas.VoucherCreate, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
     updated_voucher = crud.update_voucher(db, voucher_id, voucher)
-    if not updated_voucher:
-        raise HTTPException(status_code=404, detail="Không tìm thấy voucher")
+    if not updated_voucher: raise HTTPException(status_code=404, detail="Không tìm thấy voucher")
     return updated_voucher
 
 @app.delete("/admin/vouchers/{voucher_id}")
 def delete_voucher(voucher_id: int, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
     result = crud.delete_voucher(db, voucher_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Không tìm thấy voucher")
+    if not result: raise HTTPException(status_code=404, detail="Không tìm thấy voucher")
     return result
+
+# ============================================================
+# 9. QUẢN LÝ BÀN (TABLES) - [MỚI HOÀN TOÀN]
+# ============================================================
+@app.get("/admin/tables/", response_model=List[schemas.Table])
+def read_tables(store_id: Optional[int] = None, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return crud.get_tables(db, store_id)
+
+@app.post("/admin/tables/", response_model=schemas.Table)
+def create_table(table: schemas.TableCreate, store_id: Optional[int] = None, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return crud.create_table(db, table, store_id)
+
+# (API này Frontend có thể dùng để reset bàn thủ công nếu cần)
+@app.put("/admin/tables/{table_id}/status", response_model=schemas.Table)
+def update_table_status(table_id: int, status: models.TableStatus, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return crud.update_table_status(db, table_id, status)
