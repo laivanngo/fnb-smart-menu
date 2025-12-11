@@ -72,6 +72,7 @@ export default function DashboardPage() {
                 <Link href="/dashboard/options" style={styles.navLink}>⚙️ Quản lý Tùy chọn</Link>
                 <Link href="/dashboard/vouchers" style={styles.navLink}>🎟️ Quản lý Voucher</Link>                
                 <Link href="/dashboard/orders" style={styles.navLink}>🛒 Quản lý Đơn hàng</Link>
+                <Link href="/dashboard/kitchen" style={styles.navLink}>👨‍🍳 Kitchen</Link>
             </nav>
 
         </div>

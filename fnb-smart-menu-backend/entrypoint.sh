@@ -14,9 +14,8 @@ python app/db/wait_for_db.py
 echo "Đang cập nhật cấu trúc Database (Alembic)..."
 alembic upgrade head
 
-# Lưu ý: Mình đã tắt dòng cũ bên dưới vì Alembic đã lo việc tạo bảng rồi.
-# echo "Đang tạo bảng (nếu chưa có)..."
-# python app/models/models.py
+echo "Đang tạo tài khoản Admin mặc định..."
+python app/scripts/create_admin.py
 
 # 3. Chạy kịch bản nhập hàng mẫu (seed)
 echo "Đang nhập hàng mẫu (nếu cần)..."
