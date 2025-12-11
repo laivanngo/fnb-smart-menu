@@ -15,7 +15,7 @@ sys.path.append(os.getcwd())
 
 # Import Base và DATABASE_URL từ file models.py của bạn
 # DATABASE_URL rất quan trọng để Alembic biết kết nối vào đâu (nhất là trong Docker)
-from models import Base, DATABASE_URL
+from app.models.models import Base, DATABASE_URL
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

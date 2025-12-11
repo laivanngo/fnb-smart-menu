@@ -1,3 +1,6 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 # File: create_admin.py
 # Mục đích: Tạo tài khoản Admin đầu tiên
 
@@ -6,8 +9,8 @@ from dotenv import load_dotenv
 load_dotenv() # Nạp cấu hình .env
 
 from sqlalchemy.orm import Session
-from models import SessionLocal, Admin, create_tables
-from security import get_password_hash
+from app.models.models import SessionLocal, Admin, create_tables
+from app.core.security import get_password_hash
 
 def create_super_admin():
     db: Session = SessionLocal()

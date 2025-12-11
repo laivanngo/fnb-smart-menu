@@ -1,7 +1,7 @@
 # Tệp: schemas.py (CẬP NHẬT TÍCH ĐIỂM)
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
-import models 
+from app.models import models 
 from datetime import datetime, date
 from decimal import Decimal
 

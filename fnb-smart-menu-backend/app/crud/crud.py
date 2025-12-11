@@ -1,10 +1,15 @@
-# Tệp: crud.py (FINAL - TÍCH ĐIỂM 10k=1đ, ĐỔI ĐIỂM 1đ=500đ)
+# Tệp: app/crud/crud.py
 from sqlalchemy.orm import Session, joinedload, subqueryload
 from sqlalchemy import asc, func
 from fastapi import HTTPException
-import models, schemas, security
 from typing import List, Optional
 from datetime import datetime
+
+# --- [SỬA QUAN TRỌNG] TÁCH IMPORT RA TỪNG DÒNG ---
+from app.models import models
+from app.schemas import schemas
+from app.core import security
+# -------------------------------------------------
 
 # ==========================================
 # 1. AUTH & ADMIN
@@ -189,12 +194,10 @@ def update_table_status(db: Session, table_id: int, status: models.TableStatus):
     return db_table
 
 # ==========================================
-# 7. ORDER & LOGIC (ĐẶT HÀNG & TÍNH TOÁN) - [ĐÃ CẬP NHẬT TÍCH ĐIỂM]
+# 7. ORDER & LOGIC
 # ==========================================
-
-# CẤU HÌNH TỶ LỆ ĐIỂM
-POINT_CONVERSION_RATE = 500  # 1 Điểm = 500 VNĐ (Dùng để giảm giá)
-EARN_RATE = 10000            # Tiêu 10.000 VNĐ = Tích 1 Điểm (Dùng để cộng điểm)
+POINT_CONVERSION_RATE = 500
+EARN_RATE = 10000
 
 def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest):
     sub_total = 0
@@ -211,7 +214,6 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
     delivery_fee = 15000 if order_data.delivery_method == models.DeliveryMethod.NHANH else 0
     discount_amount = 0
     
-    # 1. Tính Voucher (Ưu tiên voucher trước)
     if order_data.voucher_code:
         voucher = db.query(models.Voucher).filter(
             models.Voucher.code == order_data.voucher_code,
@@ -226,10 +228,8 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
                     if voucher.max_discount is not None and discount_amount > float(voucher.max_discount):
                         discount_amount = float(voucher.max_discount)
     
-    # Giới hạn voucher không vượt quá sub_total
     if discount_amount > sub_total: discount_amount = sub_total
 
-    # 2. Tính Điểm thưởng (Nếu khách muốn dùng)
     points_discount = 0
     user_points = 0
     
@@ -237,18 +237,10 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
         user = db.query(models.User).filter(models.User.phone == order_data.customer_phone).first()
         if user:
             user_points = user.points or 0
-            
-            # Chỉ tính giảm giá nếu khách có tick vào "Dùng điểm"
             if order_data.use_points and user_points > 0:
-                # Tính số tiền còn lại sau khi trừ voucher & phí ship
                 temp_total_before_points = sub_total + delivery_fee - discount_amount
-                
-                # Giá trị tối đa có thể giảm từ điểm
-                potential_discount = user_points * POINT_CONVERSION_RATE # Điểm * 500đ
-                
-                # Không cho giảm quá số tiền phải trả (không âm tiền)
+                potential_discount = user_points * POINT_CONVERSION_RATE
                 points_discount = min(potential_discount, temp_total_before_points)
-                # Đảm bảo không âm (phòng trường hợp voucher đã cover hết)
                 points_discount = max(0, points_discount)
 
     total_amount = max(0, sub_total + delivery_fee - discount_amount - points_discount)
@@ -257,14 +249,13 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
         sub_total=sub_total,
         delivery_fee=delivery_fee,
         discount_amount=discount_amount,
-        points_discount=points_discount, # Trả về tiền giảm từ điểm
+        points_discount=points_discount,
         total_amount=total_amount,
-        user_points_available=user_points, # Trả về số điểm hiện có
+        user_points_available=user_points,
         can_use_points=(user_points > 0)
     )
 
 def create_order(db: Session, order: schemas.OrderCreate):
-    # 1. Tính toán lại giá (bao gồm cả điểm nếu có)
     calc_result = calculate_order_total(db, schemas.OrderCalculateRequest(
         items=order.items,
         voucher_code=order.voucher_code,
@@ -273,30 +264,25 @@ def create_order(db: Session, order: schemas.OrderCreate):
         use_points=order.use_points
     ))
     
-    # 2. Xử lý User (Tìm hoặc Tạo mới)
     user = None
     if order.customer_phone:
         user = db.query(models.User).filter(models.User.phone == order.customer_phone).first()
         if not user:
-            # Tạo khách hàng mới (Silent Registration)
             user = models.User(
                 full_name=order.customer_name,
                 phone=order.customer_phone,
                 role=models.UserRole.CUSTOMER,
-                points=0 # Khách mới tinh chưa có điểm
+                points=0
             )
             db.add(user)
             db.commit()
             db.refresh(user)
 
-    # 3. TRỪ ĐIỂM (Nếu khách đã dùng)
     if calc_result.points_discount > 0 and user:
-        # Tính ngược lại số điểm cần trừ: Tiền giảm / 500
         points_to_deduct = int(calc_result.points_discount / POINT_CONVERSION_RATE)
         user.points = max(0, user.points - points_to_deduct)
-        db.add(user) # Đánh dấu update
+        db.add(user)
 
-    # 4. Tạo đơn hàng
     db_order = models.Order(
         customer_name=order.customer_name,
         customer_phone=order.customer_phone,
@@ -305,23 +291,21 @@ def create_order(db: Session, order: schemas.OrderCreate):
         sub_total=calc_result.sub_total,
         delivery_fee=calc_result.delivery_fee,
         discount_amount=calc_result.discount_amount,
-        points_discount=calc_result.points_discount, # Lưu số tiền đã giảm do điểm
+        points_discount=calc_result.points_discount,
         total_amount=calc_result.total_amount,
         delivery_method_selected=order.delivery_method,
         payment_method=order.payment_method,
         voucher_code=order.voucher_code,
         table_id=order.table_id,
-        user_id=user.id if user else None # Gắn user vào đơn để sau này cộng điểm
+        user_id=user.id if user else None
     )
     db.add(db_order)
     db.commit()
     db.refresh(db_order)
     
-    # 3. Nếu có bàn -> Cập nhật bàn thành CO_KHACH
     if order.table_id:
         update_table_status(db, order.table_id, models.TableStatus.CO_KHACH)
 
-    # 4. Lưu chi tiết món
     for item in order.items:
         db_product = db.query(models.Product).filter(models.Product.id == item.product_id).first()
         if not db_product: continue
@@ -360,9 +344,6 @@ def create_order(db: Session, order: schemas.OrderCreate):
     db.refresh(db_order)
     return db_order
 
-# ==========================================
-# 8. HOÀN TẤT & CỘNG ĐIỂM (EARN POINTS)
-# ==========================================
 def get_orders(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Order).options(
         subqueryload(models.Order.items).subqueryload(models.OrderItem.options_selected)
@@ -382,12 +363,6 @@ def update_order_status(db: Session, order_id: int, status: models.OrderStatus):
     return db_order
 
 def complete_order(db: Session, order_id: int):
-    """
-    Khi đơn HOÀN TẤT:
-    1. Cập nhật trạng thái
-    2. Trả bàn (nếu có)
-    3. TÍCH ĐIỂM cho khách (10k = 1 điểm)
-    """
     order = db.query(models.Order).filter(models.Order.id == order_id).first()
     if not order: return None
     
@@ -396,13 +371,10 @@ def complete_order(db: Session, order_id: int):
     if order.table_id:
         update_table_status(db, order.table_id, models.TableStatus.TRONG)
             
-    # TÍCH ĐIỂM (Chỉ tích nếu đơn có user_id)
     if order.user_id:
         user = db.query(models.User).filter(models.User.id == order.user_id).first()
         if user:
-            # Quy ước: 10,000 VNĐ (trên tổng thực trả) = 1 điểm
             diem_tich_luy = int(order.total_amount / EARN_RATE)
-            
             user.points = (user.points or 0) + diem_tich_luy
             user.total_spent = (user.total_spent or 0) + order.total_amount
             user.order_count = (user.order_count or 0) + 1

@@ -1,14 +1,17 @@
+import sys
+import os
+sys.path.append(os.getcwd())
 # Tệp: seed.py (ĐÃ CẬP NHẬT THEO Ý BẠN: link_product_to_options)
 import os
 from dotenv import load_dotenv
 load_dotenv() # Nạp biến môi trường
 
 from sqlalchemy.orm import Session
-from models import (
+from app.models.models import (
     SessionLocal, Category, Product, Option, OptionValue, OptionType, create_tables
 )
 # Nhập hàm với tên chuẩn semantic
-from crud import link_product_to_options 
+from app.crud.crud import link_product_to_options 
 
 def seed_data():
     db: Session = SessionLocal()
