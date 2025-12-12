@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy import desc
+from decimal import Decimal
 from typing import List, Optional
 
 from app.models import models
@@ -278,7 +279,10 @@ async def update_user_points(db: AsyncSession, user_id: int, points_change: int,
     if user:
         user.points = (user.points or 0) + points_change
         if money_spent > 0:
-            user.total_spent = (user.total_spent or 0) + money_spent
+            # [FIX QUAN TRỌNG]: Ép kiểu float sang Decimal trước khi cộng
+            current_spent = user.total_spent or Decimal(0)
+            user.total_spent = current_spent + Decimal(str(money_spent)) 
+            
             user.order_count = (user.order_count or 0) + 1
         await db.commit()
     return user
