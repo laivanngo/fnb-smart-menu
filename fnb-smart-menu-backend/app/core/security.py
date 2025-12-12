@@ -1,22 +1,21 @@
-# Tệp: app/core/security.py (ĐÃ SỬA LỖI VÒNG LẶP)
-
+# Tệp: app/core/security.py
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
+# [FIX 1] Thêm Depends, HTTPException, status vào đây
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 import os
 
-# --- [SỬA QUAN TRỌNG] ---
-# 1. Chỉ import models, schemas, SessionLocal
+# Import Models
 from app.models import models
 from app.schemas import schemas
-from app.models.models import SessionLocal
-# 2. TUYỆT ĐỐI KHÔNG import crud ở đây để tránh vòng lặp
-# ------------------------
+# [FIX 2] Import đúng tên AsyncSessionLocal
+from app.models.models import AsyncSessionLocal
 
+# --- CẤU HÌNH ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -26,6 +25,7 @@ if SECRET_KEY is None:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
 
+# --- HÀM BẢO MẬT ---
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -44,24 +44,23 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/token")
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# [FIX 3] Hàm get_db chuyển sang Async
+async def get_db():
+    async with AsyncSessionLocal() as db:
+        try:
+            yield db
+        finally:
+            await db.close()
 
-async def get_current_admin(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_admin(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Không thể xác thực, vui lòng đăng nhập lại",
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # --- [MẸO QUAN TRỌNG] IMPORT TRỄ (LAZY IMPORT) ---
-    # Import crud ở đây thì code mới chạy được
+    # [FIX 4] Lazy Import để tránh vòng lặp
     from app.crud import crud 
-    # -------------------------------------------------
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -72,7 +71,8 @@ async def get_current_admin(token: str = Depends(oauth2_scheme), db: Session = D
     except JWTError:
         raise credentials_exception
     
-    admin = crud.get_admin_by_username(db, username=token_data.username)
+    # Thêm await vì crud giờ là async
+    admin = await crud.get_admin_by_username(db, username=token_data.username)
     if admin is None:
         raise credentials_exception
     return admin

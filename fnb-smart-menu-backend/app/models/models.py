@@ -1,11 +1,15 @@
+# Tệp: app/models/models.py (ASYNC VERSION)
 import os
 import enum
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Boolean, ForeignKey, 
+    Column, Integer, String, Boolean, ForeignKey, 
     Enum as SAEnum, DateTime, func, Text, Numeric, Float, Date
 )
-from sqlalchemy.orm import relationship, sessionmaker, DeclarativeBase
-from sqlalchemy.dialects.postgresql import JSONB  # Dùng cho tính năng lưu sở thích khách hàng
+from sqlalchemy.orm import relationship, DeclarativeBase
+from sqlalchemy.dialects.postgresql import JSONB
+
+# --- [ASYNC IMPORTS] ---
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 # --- Cấu hình CSDL ---
 DB_USER = os.getenv("POSTGRES_USER", "postgres")
@@ -13,16 +17,28 @@ DB_PASS = os.getenv("POSTGRES_PASSWORD", "postgres")
 DB_HOST = os.getenv("DB_HOST", "db")
 DB_NAME = os.getenv("POSTGRES_DB", "fnb_db")
 DB_PORT = os.getenv("DB_PORT", "5432")
-DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Tạo URL Async: postgresql+asyncpg://...
+DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# URL Sync để dùng cho Alembic/Scripts nếu cần thiết
+SYNC_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 class Base(DeclarativeBase):
     pass
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# --- [ASYNC ENGINE] ---
+engine = create_async_engine(DATABASE_URL, echo=False)
+
+# --- [ASYNC SESSION] ---
+AsyncSessionLocal = async_sessionmaker(
+    bind=engine,
+    class_=AsyncSession,
+    expire_on_commit=False,
+    autoflush=False
+)
 
 # ==========================================
-# PHẦN 0: CÁC ĐỊNH NGHĨA ENUM (QUY TẮC)
+# CÁC CLASS MODEL (GIỮ NGUYÊN NHƯ CŨ)
 # ==========================================
 
 class OptionType(enum.Enum):
@@ -32,7 +48,7 @@ class OptionType(enum.Enum):
 class OrderStatus(enum.Enum):
     MOI = "MOI"
     DA_XAC_NHAN = "DA_XAC_NHAN"
-    DANG_CHUAN_BI = "DANG_CHUAN_BI"
+    DANG_CHUAN_BI = "DANG_CHUAN_BI" # Sửa lại tên cho khớp logic cũ nếu cần
     DA_XONG = "DA_XONG"
     DANG_GIAO = "DANG_GIAO"
     HOAN_TAT = "HOAN_TAT"
@@ -61,15 +77,12 @@ class UserRole(enum.Enum):
     STAFF = "STAFF"
     CUSTOMER = "CUSTOMER"
 
-# [MỚI] Enum cho trạng thái bàn
 class TableStatus(enum.Enum):
-    TRONG = "TRONG"         # Bàn đang trống
-    CO_KHACH = "CO_KHACH"   # Đang có khách ngồi
-    DAT_TRUOC = "DAT_TRUOC" # Đã được đặt trước
+    TRONG = "TRONG"         
+    CO_KHACH = "CO_KHACH"   
+    DAT_TRUOC = "DAT_TRUOC" 
 
-# ==========================================
-# PHẦN 1: CORE SAAS & CRM KHÁCH HÀNG
-# ==========================================
+# --- TABLES DEFINITION ---
 
 class Store(Base):
     __tablename__ = "stores"
@@ -81,7 +94,6 @@ class Store(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
-    # Relationships
     users = relationship("User", back_populates="store", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="store", cascade="all, delete-orphan")
     products = relationship("Product", back_populates="store", cascade="all, delete-orphan")
@@ -101,29 +113,18 @@ class User(Base):
     email = Column(String, nullable=True)
     role = Column(SAEnum(UserRole), default=UserRole.CUSTOMER)
     
-    # --- [MỚI] CRM & GROWTH ENGINE ---
-    birthday = Column(Date, nullable=True)  # Chúc mừng sinh nhật
+    birthday = Column(Date, nullable=True)
     gender = Column(String, nullable=True)  
-    
-    # Chỉ số RFM (Recency - Frequency - Monetary)
-    last_order_date = Column(DateTime(timezone=True), nullable=True) # Lần cuối mua
-    total_spent = Column(Numeric(12, 0), default=0) # Tổng tiền đã chi
-    order_count = Column(Integer, default=0)        # Tổng số đơn đã mua
-    points = Column(Integer, default=0)             # Điểm tích lũy hiện tại
-    
-    # Sức mạnh JSONB: Lưu sở thích, tag hành vi (VD: {"thich_ngot": true, "tags": ["VIP"]})
+    last_order_date = Column(DateTime(timezone=True), nullable=True)
+    total_spent = Column(Numeric(12, 0), default=0)
+    order_count = Column(Integer, default=0)
+    points = Column(Integer, default=0)
     preferences = Column(JSONB, default={}) 
-    internal_note = Column(Text, nullable=True) # Ghi chú nội bộ cho nhân viên
-    # ---------------------------------
+    internal_note = Column(Text, nullable=True)
 
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
     store = relationship("Store", back_populates="users")
-    
     orders = relationship("Order", back_populates="user")
-
-# ==========================================
-# PHẦN 2: MENU & SẢN PHẨM
-# ==========================================
 
 class ProductOptionAssociation(Base):
     __tablename__ = "product_option_association"
@@ -139,7 +140,6 @@ class Category(Base):
     
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
     store = relationship("Store", back_populates="categories")
-    
     products = relationship("Product", back_populates="category", cascade="all, delete-orphan", order_by="Product.display_order")
 
 class Product(Base):
@@ -183,12 +183,7 @@ class OptionValue(Base):
     is_out_of_stock = Column(Boolean, default=False)
     option_id = Column(Integer, ForeignKey("options.id", ondelete="CASCADE"))
     option = relationship("Option", back_populates="values")
-    
     recipes = relationship("Recipe", back_populates="option_value", cascade="all, delete-orphan")
-
-# ==========================================
-# PHẦN 3: KHO & CÔNG THỨC
-# ==========================================
 
 class Ingredient(Base):
     __tablename__ = "ingredients"
@@ -197,47 +192,33 @@ class Ingredient(Base):
     unit = Column(String)
     current_stock = Column(Float, default=0) 
     min_stock_alert = Column(Float, default=10)
-    
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
     store = relationship("Store", back_populates="ingredients")
 
 class Recipe(Base):
     __tablename__ = "recipes"
     id = Column(Integer, primary_key=True, index=True)
-    
     product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=True)
     product = relationship("Product", back_populates="recipes")
-    
     option_value_id = Column(Integer, ForeignKey("option_values.id", ondelete="CASCADE"), nullable=True)
     option_value = relationship("OptionValue", back_populates="recipes")
-    
     ingredient_id = Column(Integer, ForeignKey("ingredients.id", ondelete="CASCADE"))
     ingredient = relationship("Ingredient")
-    
     amount_needed = Column(Float, nullable=False)
-
-# ==========================================
-# PHẦN 4: QUẢN LÝ BÀN & ĐƠN HÀNG
-# ==========================================
 
 class Table(Base):
     __tablename__ = "tables"
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False) # VD: Bàn 1, Bàn VIP
+    name = Column(String, nullable=False)
     capacity = Column(Integer, default=4) 
-    
-    # [MỚI] Sử dụng Enum chuyên nghiệp
     status = Column(SAEnum(TableStatus), default=TableStatus.TRONG)
-    
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
     store = relationship("Store", back_populates="tables")
-    
     orders = relationship("Order", back_populates="table")
 
 class Order(Base):
     __tablename__ = "orders"
     id = Column(Integer, primary_key=True, index=True)
-    
     customer_name = Column(String, nullable=False)
     customer_phone = Column(String, nullable=False)
     customer_address = Column(String, nullable=False)
@@ -252,8 +233,7 @@ class Order(Base):
     sub_total = Column(Numeric(12, 0), nullable=False)
     delivery_fee = Column(Numeric(12, 0), default=0)
     discount_amount = Column(Numeric(12, 0), default=0)
-    discount_amount = Column(Numeric(12, 0), default=0) # Giảm giá từ Voucher
-    points_discount = Column(Numeric(12, 0), default=0) # [MỚI] Giảm giá từ đổi điểm
+    points_discount = Column(Numeric(12, 0), default=0)
     total_amount = Column(Numeric(12, 0), nullable=False)
     
     status = Column(SAEnum(OrderStatus), default=OrderStatus.MOI)
@@ -262,13 +242,10 @@ class Order(Base):
     delivery_assignment = Column(SAEnum(DeliveryAssignment), default=DeliveryAssignment.CHUA_PHAN_CONG)
     
     voucher_code = Column(String, nullable=True)
-    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan")
-
-    # Liên kết bàn (Nullable=True vì đơn mang đi không cần bàn)
     table_id = Column(Integer, ForeignKey("tables.id", ondelete="SET NULL"), nullable=True)
     table = relationship("Table", back_populates="orders")
 
@@ -284,7 +261,7 @@ class OrderItem(Base):
     
     item_price = Column(Numeric(12, 0), nullable=False)
     item_note = Column(String)
-    ordered_by = Column(String, nullable=True) # Lưu tên nhân viên tạo món
+    ordered_by = Column(String, nullable=True) 
     
     options_selected = relationship("OrderItemOption", back_populates="order_item", cascade="all, delete-orphan")
 
@@ -298,10 +275,6 @@ class OrderItemOption(Base):
     value_name = Column(String)
     added_price = Column(Numeric(12, 0))
 
-# ==========================================
-# PHẦN 5: MARKETING & ADMIN
-# ==========================================
-
 class Voucher(Base):
     __tablename__ = "vouchers"
     id = Column(Integer, primary_key=True, index=True)
@@ -314,7 +287,7 @@ class Voucher(Base):
     is_active = Column(Boolean, default=True)
     
     store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=True)
-    store = relationship("Store", back_populates="vouchers") # Added back_populates for completeness
+    store = relationship("Store", back_populates="vouchers")
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -325,5 +298,9 @@ class Admin(Base):
     username = Column(String, unique=True)
     hashed_password = Column(String)
 
+# Hàm tạo bảng (Chỉ dùng cho script sync, không dùng cho App Async)
 def create_tables():
-    Base.metadata.create_all(bind=engine)
+    # Cần tạo engine sync tạm thời để tạo bảng nếu không dùng alembic
+    from sqlalchemy import create_engine
+    sync_engine = create_engine(SYNC_DATABASE_URL)
+    Base.metadata.create_all(bind=sync_engine)

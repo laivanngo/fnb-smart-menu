@@ -1,5 +1,6 @@
+# Tệp: app/routers/admin_store.py
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import os
 import uuid
@@ -8,20 +9,20 @@ from app.crud import crud
 from app.schemas import schemas
 from app.models import models
 from app.core import security
-from app.models.models import SessionLocal
+from app.models.models import AsyncSessionLocal
 
 router = APIRouter()
 
 UPLOAD_DIRECTORY = "uploads"
-STATIC_PATH = "/static"
-os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
-
 def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
+    pass # Placeholder, hàm thật ở dưới
 
-# --- UPLOAD ---
+async def get_db():
+    async with AsyncSessionLocal() as db:
+        try: yield db
+        finally: await db.close()
+
+# --- UPLOAD (Không đụng database nên giữ nguyên hoặc async cũng được) ---
 @router.post("/upload-image")
 async def upload_image(file: UploadFile = File(...), current_user = Depends(security.get_current_admin)):
     try:
@@ -30,40 +31,40 @@ async def upload_image(file: UploadFile = File(...), current_user = Depends(secu
         file_path = os.path.join(UPLOAD_DIRECTORY, file_name)
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        return {"image_url": f"{STATIC_PATH}/{file_name}"}
+        return {"image_url": f"/static/{file_name}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi: {str(e)}")
 
 # --- TABLES ---
 @router.get("/tables/", response_model=List[schemas.Table])
-def read_tables(store_id: Optional[int] = None, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    return crud.get_tables(db, store_id)
+async def read_tables(store_id: Optional[int] = None, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return await crud.get_tables(db, store_id)
 
 @router.post("/tables/", response_model=schemas.Table)
-def create_table(table: schemas.TableCreate, store_id: Optional[int] = None, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    return crud.create_table(db, table, store_id)
+async def create_table(table: schemas.TableCreate, store_id: Optional[int] = None, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return await crud.create_table(db, table, store_id)
 
 @router.put("/tables/{table_id}/status", response_model=schemas.Table)
-def update_table_status(table_id: int, status: models.TableStatus, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    return crud.update_table_status(db, table_id, status)
+async def update_table_status(table_id: int, status: models.TableStatus, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return await crud.update_table_status(db, table_id, status)
 
 # --- VOUCHERS ---
 @router.get("/vouchers/", response_model=List[schemas.Voucher])
-def read_vouchers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    return crud.get_vouchers(db, skip, limit)
+async def read_vouchers(skip: int = 0, limit: int = 100, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return await crud.get_vouchers(db, skip, limit)
 
 @router.post("/vouchers/", response_model=schemas.Voucher)
-def create_voucher(voucher: schemas.VoucherCreate, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    return crud.create_voucher(db, voucher)
+async def create_voucher(voucher: schemas.VoucherCreate, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    return await crud.create_voucher(db, voucher)
 
 @router.put("/vouchers/{voucher_id}", response_model=schemas.Voucher)
-def update_voucher(voucher_id: int, voucher: schemas.VoucherCreate, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    res = crud.update_voucher(db, voucher_id, voucher)
+async def update_voucher(voucher_id: int, voucher: schemas.VoucherCreate, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    res = await crud.update_voucher(db, voucher_id, voucher)
     if not res: raise HTTPException(status_code=404, detail="Not found")
     return res
 
 @router.delete("/vouchers/{voucher_id}")
-def delete_voucher(voucher_id: int, db: Session = Depends(get_db), current_user=Depends(security.get_current_admin)):
-    res = crud.delete_voucher(db, voucher_id)
+async def delete_voucher(voucher_id: int, db: AsyncSession = Depends(get_db), current_user=Depends(security.get_current_admin)):
+    res = await crud.delete_voucher(db, voucher_id)
     if not res: raise HTTPException(status_code=404, detail="Not found")
     return res

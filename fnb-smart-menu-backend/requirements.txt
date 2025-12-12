@@ -1,10 +1,13 @@
 fastapi
 uvicorn[standard]
-sqlalchemy
+sqlalchemy>=2.0.0
 pydantic
 passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
 python-jose[cryptography]
 python-multipart
-psycopg2-binary
+psycopg2-binary  # Giữ lại để Alembic chạy migration dễ hơn (Sync)
+asyncpg          # [QUAN TRỌNG] Driver Async mới
+greenlet         # Cần thiết cho SQLAlchemy Async
 alembic
+python-dotenv
