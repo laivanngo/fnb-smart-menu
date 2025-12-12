@@ -11,3 +11,7 @@ asyncpg          # [QUAN TRỌNG] Driver Async mới
 greenlet         # Cần thiết cho SQLAlchemy Async
 alembic
 python-dotenv
+# --- THƯ VIỆN TEST ---
+pytest
+pytest-asyncio
+httpx

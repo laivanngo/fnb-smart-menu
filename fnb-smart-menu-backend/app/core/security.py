@@ -2,20 +2,16 @@
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-# [FIX 1] Thêm Depends, HTTPException, status vào đây
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 import os
 
-# Import Models
 from app.models import models
 from app.schemas import schemas
-# [FIX 2] Import đúng tên AsyncSessionLocal
-from app.models.models import AsyncSessionLocal
+from app.dependencies import get_db # <--- Dùng chung
 
-# --- CẤU HÌNH ---
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -25,7 +21,6 @@ if SECRET_KEY is None:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
 
-# --- HÀM BẢO MẬT ---
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
@@ -44,14 +39,6 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/token")
 
-# [FIX 3] Hàm get_db chuyển sang Async
-async def get_db():
-    async with AsyncSessionLocal() as db:
-        try:
-            yield db
-        finally:
-            await db.close()
-
 async def get_current_admin(token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -59,7 +46,6 @@ async def get_current_admin(token: str = Depends(oauth2_scheme), db: AsyncSessio
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    # [FIX 4] Lazy Import để tránh vòng lặp
     from app.crud import crud 
 
     try:
@@ -71,7 +57,6 @@ async def get_current_admin(token: str = Depends(oauth2_scheme), db: AsyncSessio
     except JWTError:
         raise credentials_exception
     
-    # Thêm await vì crud giờ là async
     admin = await crud.get_admin_by_username(db, username=token_data.username)
     if admin is None:
         raise credentials_exception

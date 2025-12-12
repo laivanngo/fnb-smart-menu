@@ -9,20 +9,13 @@ from app.crud import crud
 from app.schemas import schemas
 from app.models import models
 from app.core import security
-from app.models.models import AsyncSessionLocal
+from app.dependencies import get_db # <--- Dùng chung
 
 router = APIRouter()
 
 UPLOAD_DIRECTORY = "uploads"
-def get_db():
-    pass # Placeholder, hàm thật ở dưới
 
-async def get_db():
-    async with AsyncSessionLocal() as db:
-        try: yield db
-        finally: await db.close()
-
-# --- UPLOAD (Không đụng database nên giữ nguyên hoặc async cũng được) ---
+# --- UPLOAD ---
 @router.post("/upload-image")
 async def upload_image(file: UploadFile = File(...), current_user = Depends(security.get_current_admin)):
     try:

@@ -5,14 +5,9 @@ from typing import List
 from app.crud import crud
 from app.schemas import schemas
 from app.core import security
-from app.models.models import AsyncSessionLocal
+from app.dependencies import get_db # <--- Dùng chung
 
 router = APIRouter()
-
-async def get_db():
-    async with AsyncSessionLocal() as db:
-        try: yield db
-        finally: await db.close()
 
 # --- CATEGORIES ---
 @router.get("/categories/", response_model=List[schemas.Category])

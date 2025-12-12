@@ -1,14 +1,15 @@
-# Tệp: app/routers/orders.py (ASYNC VERSION)
+# Tệp: app/routers/orders.py
 from fastapi import APIRouter, Depends, HTTPException, status, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession # Import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List
 from datetime import datetime
 
-from app.crud import crud
 from app.schemas import schemas
 from app.models import models
 from app.core import security
-from app.models.models import AsyncSessionLocal
+from app.dependencies import get_db # <--- Dùng chung
+from app.crud import crud 
+from app.services.order_service import OrderService
 
 try:
     from app.core.websocket import manager
@@ -17,20 +18,16 @@ except ImportError:
 
 router = APIRouter()
 
-# Dependency Async
-async def get_db():
-    async with AsyncSessionLocal() as db:
-        try: yield db
-        finally: await db.close()
-
 # --- API KHÁCH HÀNG ---
 @router.post("/orders/calculate", response_model=schemas.OrderCalculateResponse)
 async def calculate_order(order_data: schemas.OrderCalculateRequest, db: AsyncSession = Depends(get_db)):
-    return await crud.calculate_order_total(db, order_data)
+    result = await OrderService.calculate_total(db, order_data)
+    return result
 
 @router.post("/orders", response_model=schemas.PublicOrderResponse, status_code=status.HTTP_201_CREATED)
 async def submit_new_order(order_data: schemas.OrderCreate, db: AsyncSession = Depends(get_db)):
-    db_order = await crud.create_order(db, order_data)
+    db_order = await OrderService.place_order(db, order_data)
+    
     if manager:
         msg = {
             "type": "new_order",
@@ -41,6 +38,7 @@ async def submit_new_order(order_data: schemas.OrderCreate, db: AsyncSession = D
             "timestamp": datetime.now().isoformat()
         }
         await manager.broadcast(msg)
+    
     return db_order
 
 # --- API ADMIN ---
@@ -55,11 +53,11 @@ async def read_order_detail(order_id: int, db: AsyncSession = Depends(get_db), c
 @router.put("/admin/orders/{order_id}/status", response_model=schemas.AdminOrderListResponse)
 async def update_status(order_id: int, status: models.OrderStatus, db: AsyncSession = Depends(get_db), current_user = Depends(security.get_current_admin)):
     if status == models.OrderStatus.HOAN_TAT:
-        return await crud.complete_order(db, order_id)
+        return await OrderService.complete_order(db, order_id)
     else:
         return await crud.update_order_status(db, order_id, status)
 
-# --- WEBSOCKET (Đã là async sẵn, nhưng cứ giữ nguyên) ---
+# --- WEBSOCKET ---
 @router.websocket("/ws/admin/orders")
 async def websocket_admin(websocket: WebSocket):
     if manager:
