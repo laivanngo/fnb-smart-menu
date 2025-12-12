@@ -38,8 +38,9 @@ async def create_category(db: AsyncSession, category: schemas.CategoryCreate):
     db_category = models.Category(name=category.name, display_order=category.display_order)
     db.add(db_category)
     await db.commit()
-    await db.refresh(db_category)
-    return db_category
+    stmt = select(models.Category).options(selectinload(models.Category.products)).where(models.Category.id == db_category.id)
+    result = await db.execute(stmt)
+    return result.scalars().first()
 
 async def update_category(db: AsyncSession, category_id: int, category: schemas.CategoryUpdate):
     stmt = select(models.Category).where(models.Category.id == category_id)
@@ -83,15 +84,22 @@ async def get_product(db: AsyncSession, product_id: int):
     return result.scalars().first()
 
 async def create_product(db: AsyncSession, product: schemas.ProductCreate):
+    # Check category tồn tại
     stmt = select(models.Category).where(models.Category.id == product.category_id)
     result = await db.execute(stmt)
     cat = result.scalars().first()
     if not cat: return None
+    
     db_product = models.Product(**product.model_dump())
     db.add(db_product)
     await db.commit()
-    await db.refresh(db_product)
-    return db_product
+    stmt_reload = select(models.Product).options(
+        selectinload(models.Product.category),
+        selectinload(models.Product.options).selectinload(models.Option.values)
+    ).where(models.Product.id == db_product.id)
+    
+    result_reload = await db.execute(stmt_reload)
+    return result_reload.scalars().first()
 
 async def update_product(db: AsyncSession, product_id: int, product: schemas.ProductUpdate):
     stmt = select(models.Product).where(models.Product.id == product_id)
@@ -153,8 +161,9 @@ async def create_option(db: AsyncSession, option: schemas.OptionCreate):
     db_option = models.Option(name=option.name, type=option.type, display_order=option.display_order)
     db.add(db_option)
     await db.commit()
-    await db.refresh(db_option)
-    return db_option
+    stmt = select(models.Option).options(selectinload(models.Option.values)).where(models.Option.id == db_option.id)
+    result = await db.execute(stmt)
+    return result.scalars().first()
 
 async def update_option(db: AsyncSession, option_id: int, option_update: schemas.OptionUpdate):
     stmt = select(models.Option).where(models.Option.id == option_id)
