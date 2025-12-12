@@ -288,7 +288,6 @@ async def update_user_points(db: AsyncSession, user_id: int, points_change: int,
     if user:
         user.points = (user.points or 0) + points_change
         if money_spent > 0:
-            # [FIX QUAN TRỌNG]: Ép kiểu float sang Decimal trước khi cộng
             current_spent = user.total_spent or Decimal(0)
             user.total_spent = current_spent + Decimal(str(money_spent)) 
             
